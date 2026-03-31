@@ -42,7 +42,6 @@ export async function fetchMessages(chatId: string): Promise<Message[]> {
   return res.json();
 }
 
-// Сохраняет ОДНО сообщение
 export async function saveMessage(chatId: string, message: { role: string; content: string }) {
   await fetch(`/api/chats/${chatId}/messages`, {
     method: "POST",

@@ -11,7 +11,7 @@ async def get_pool() -> asyncpg.Pool:
             dsn=os.getenv("DATABASE_URL"),
             min_size=1,
             max_size=10,
-            statement_cache_size=0,  # обязательно для Supabase Transaction pooler
+            statement_cache_size=0,
         )
     return _pool
 

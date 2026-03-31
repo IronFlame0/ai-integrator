@@ -2,13 +2,6 @@ import os
 from openai import AsyncOpenAI
 from typing import AsyncGenerator
 
-# Модели Gemini для fallback
-MODELS = [
-    "gemini-2.5-flash-preview-05-20",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-]
-
 
 async def stream_chat(messages: list[dict]) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(
@@ -32,11 +25,10 @@ async def stream_chat(messages: list[dict]) -> AsyncGenerator[str, None]:
 
     except Exception as e:
         error_msg = str(e)
-        # Подсказка если квота
         if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            yield f"data: [ERROR] Квота модели {model} исчерпана. Попробуй сменить GEMINI_MODEL в .env\n\n"
+            yield f"data: [ERROR] Model {model} quota exceeded\n\n"
         elif "400" in error_msg or "API_KEY_INVALID" in error_msg:
-            yield "data: [ERROR] Неверный API ключ. Проверь GEMINI_API_KEY в .env\n\n"
+            yield "data: [ERROR] Invalid API key\n\n"
         else:
             yield f"data: [ERROR] {error_msg}\n\n"
 

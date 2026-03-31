@@ -45,7 +45,6 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-gray-50">
 
-      {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
           <span className="text-sm font-semibold text-gray-700">AI Chat</span>
@@ -57,7 +56,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Список чатов */}
         <div className="flex-1 overflow-y-auto p-2">
           {chats.length === 0 && (
             <p className="p-2 text-xs text-gray-400">Нет чатов — создай новый</p>
@@ -77,7 +75,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Футер sidebar */}
         <div className="border-t border-gray-100 p-3">
           <p className="truncate text-xs text-gray-500 mb-2">{user?.email}</p>
           <button
@@ -89,7 +86,6 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Основная область */}
       <main className="flex flex-1 flex-col">
         {activeChatId ? (
           <Chat

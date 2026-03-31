@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from enum import Enum
 from core.db import get_pool
 from core.deps import get_current_user
 
@@ -8,7 +9,19 @@ router = APIRouter(prefix="/api/chats", tags=["chats"])
 DAILY_LIMIT = 50
 
 
-# --- Chats ---
+class UpdateTitleRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+
+
+class MessageRole(str, Enum):
+    user = "user"
+    assistant = "assistant"
+
+
+class SaveMessageRequest(BaseModel):
+    role: MessageRole
+    content: str = Field(..., min_length=1, max_length=10000)
+
 
 @router.get("")
 async def list_chats(user: dict = Depends(get_current_user)):
@@ -27,7 +40,7 @@ async def create_chat(user: dict = Depends(get_current_user)):
     row = await pool.fetchrow(
         "INSERT INTO chats (user_id, title) VALUES ($1, $2) "
         "RETURNING id, title, created_at, updated_at",
-        user["id"], "Новый чат",
+        user["id"], "New chat",
     )
     return dict(row)
 
@@ -44,19 +57,17 @@ async def delete_chat(chat_id: str, user: dict = Depends(get_current_user)):
 @router.patch("/{chat_id}/title")
 async def update_title(
     chat_id: str,
-    body: dict,
+    body: UpdateTitleRequest,
     user: dict = Depends(get_current_user),
 ):
     pool = await get_pool()
     row = await pool.fetchrow(
         "UPDATE chats SET title = $1 WHERE id = $2 AND user_id = $3 "
         "RETURNING id, title",
-        body["title"], chat_id, user["id"],
+        body.title, chat_id, user["id"],
     )
     return dict(row)
 
-
-# --- Messages ---
 
 @router.get("/{chat_id}/messages")
 async def list_messages(chat_id: str, user: dict = Depends(get_current_user)):
@@ -69,29 +80,21 @@ async def list_messages(chat_id: str, user: dict = Depends(get_current_user)):
     return [dict(r) for r in rows]
 
 
-class SaveMessageRequest(BaseModel):
-    role: str
-    content: str
-
-
 @router.post("/{chat_id}/messages", status_code=201)
 async def save_message(
     chat_id: str,
     body: SaveMessageRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Сохраняет одно сообщение — вызывается дважды: для user и assistant."""
     pool = await get_pool()
     row = await pool.fetchrow(
         "INSERT INTO messages (chat_id, user_id, role, content) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, role, content, created_at",
-        chat_id, user["id"], body.role, body.content,
+        chat_id, user["id"], body.role.value, body.content,
     )
     return dict(row)
 
-
-# --- Usage / лимиты ---
 
 @router.get("/usage/today")
 async def get_usage(user: dict = Depends(get_current_user)):
@@ -113,6 +116,17 @@ async def get_usage(user: dict = Depends(get_current_user)):
 async def increment_usage(user: dict = Depends(get_current_user)):
     pool = await get_pool()
     row = await pool.fetchrow(
+        "SELECT request_count FROM usage "
+        "WHERE user_id = $1 AND date = CURRENT_DATE",
+        user["id"],
+    )
+    count = row["request_count"] if row else 0
+    if count >= DAILY_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily limit of {DAILY_LIMIT} requests exceeded",
+        )
+    row = await pool.fetchrow(
         "INSERT INTO usage (user_id, date, request_count) "
         "VALUES ($1, CURRENT_DATE, 1) "
         "ON CONFLICT (user_id, date) DO UPDATE "
@@ -121,10 +135,4 @@ async def increment_usage(user: dict = Depends(get_current_user)):
         user["id"],
     )
     count = row["request_count"]
-    if count > DAILY_LIMIT:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=429,
-            detail=f"Дневной лимит {DAILY_LIMIT} запросов исчерпан",
-        )
     return {"used": count, "limit": DAILY_LIMIT, "remaining": DAILY_LIMIT - count}

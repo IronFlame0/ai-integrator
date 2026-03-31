@@ -29,7 +29,6 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
       headers: { Authorization: `Bearer ${getToken()}` },
       body: { model, chatId },
       onFinish: async (assistantMessage) => {
-        // Сохраняем user сообщение
         if (pendingUserMessageRef.current) {
           await saveMessage(chatId, {
             role: "user",
@@ -38,16 +37,14 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
           pendingUserMessageRef.current = null;
         }
 
-        // Сохраняем ответ ассистента — content ?? "" убирает null
         await saveMessage(chatId, {
           role: "assistant",
           content: assistantMessage.content ?? "",
         });
 
-        // Заголовок один раз по первому user сообщению
         if (!titleSetRef.current) {
           const firstUser = messages.find((m) => m.role === "user");
-          const title = (firstUser?.content || assistantMessage.content || "Новый чат")
+          const title = (firstUser?.content || assistantMessage.content || "New chat")
             .slice(0, 50)
             .trim();
           titleSetRef.current = true;
@@ -118,7 +115,6 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
   return (
     <div className="flex flex-1 flex-col min-h-0">
 
-      {/* Топбар */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-2">
         <select
           value={model}
@@ -136,7 +132,6 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
         )}
       </div>
 
-      {/* Сообщения */}
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-0 p-4">
         {messages.length === 0 && (
           <p className="text-center text-sm text-gray-400 mt-20">
@@ -169,7 +164,6 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Инпут */}
       <form
         onSubmit={handleSend}
         className="flex shrink-0 gap-2 border-t border-gray-200 bg-white p-3"
