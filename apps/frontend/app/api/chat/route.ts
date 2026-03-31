@@ -1,13 +1,21 @@
 import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
 
+const ALLOWED_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.5-pro",
+];
+
 export async function POST(req: Request) {
   const start = Date.now();
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-  console.log(`[chat] → request started, model: ${model}`);
+  const { messages, model: requestedModel } = await req.json();
 
-  const { messages } = await req.json();
-  console.log(`[chat] → messages count: ${messages.length}`);
+  const model = ALLOWED_MODELS.includes(requestedModel)
+    ? requestedModel
+    : (process.env.GEMINI_MODEL || "gemini-2.5-flash");
+
+  console.log(`[chat] → model: ${model}, messages: ${messages.length}`);
 
   try {
     const result = streamText({
@@ -16,22 +24,18 @@ export async function POST(req: Request) {
       system: "Ты полезный AI ассистент. Отвечай на языке пользователя.",
       onFinish: ({ usage, finishReason }) => {
         const ms = Date.now() - start;
-        console.log(
-          `[chat] ✓ done in ${ms}ms | reason: ${finishReason} | tokens: ${usage.promptTokens}→${usage.completionTokens}`
-        );
+        console.log(`[chat] ✓ ${ms}ms | ${finishReason} | ${usage.promptTokens}→${usage.completionTokens} tokens`);
       },
     });
-    console.log("After create ", Date.now() - start)
+
     return result.toDataStreamResponse({
       getErrorMessage: (error) => {
-        const ms = Date.now() - start;
-        console.error(`[chat] ✗ error in ${ms}ms:`, error);
+        console.error(`[chat] ✗ ${Date.now() - start}ms:`, error);
         return error instanceof Error ? error.message : "Ошибка AI";
       },
     });
   } catch (error) {
-    const ms = Date.now() - start;
-    console.error(`[chat] ✗ exception in ${ms}ms:`, error);
+    console.error(`[chat] ✗ exception:`, error);
     return new Response(JSON.stringify({ error: String(error) }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

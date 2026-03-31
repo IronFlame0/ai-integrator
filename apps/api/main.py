@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import chat, auth
+from routers import chat, auth, chats
 from core.db import get_pool, close_pool
 
 
@@ -22,12 +22,12 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(chats.router)
 app.include_router(chat.router)
 
 
 @app.get("/api/health")
 async def health():
-    # Реальная проверка соединения с БД
     try:
         pool = await get_pool()
         await pool.fetchval("SELECT 1")
@@ -36,7 +36,6 @@ async def health():
     except Exception as e:
         db_status = f"error: {str(e)}"
         db_host = "unknown"
-
     return {
         "status": "ok" if db_status == "ok" else "degraded",
         "db": db_status,

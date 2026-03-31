@@ -8,92 +8,109 @@
 
 ## Запуск
 ```bash
-docker compose up -d                        # поднять всё
-docker compose build api && docker compose up -d --force-recreate api   # пересобрать api
-docker compose build --no-cache frontend && docker compose up -d --force-recreate frontend  # пересобрать фронт (если не ставятся npm пакеты)
-docker compose up -d --force-recreate api  # перечитать .env без пересборки
-docker compose logs -f api                 # логи Python API
-docker compose logs -f frontend            # логи Next.js
+docker compose up -d
+docker compose build api && docker compose up -d --force-recreate api
+docker compose build --no-cache frontend && docker compose up -d --force-recreate frontend
+docker compose logs -f api
+docker compose logs -f frontend
 ```
 
 ## Переменные окружения (.env)
 ```
-GEMINI_API_KEY     — ключ от Google AI Studio (aistudio.google.com)
-GEMINI_MODEL       — название модели, сейчас: gemini-2.5-flash
-SUPABASE_DB_URL    — Transaction pooler URL (порт 6543, не 5432)
-SUPABASE_URL       — https://[ref].supabase.co
-SUPABASE_ANON_KEY  — Publishable key из Supabase → Connect
-JWT_SECRET         — секрет для подписи JWT токенов
-JWT_ALGORITHM      — HS256
-JWT_EXPIRE_MINUTES — 10080 (7 дней)
+GEMINI_API_KEY      — ключ от Google AI Studio
+GEMINI_MODEL        — gemini-2.5-flash (дефолт)
+SUPABASE_DB_URL     — Transaction pooler URL (порт 6543)
+SUPABASE_URL        — https://[ref].supabase.co
+SUPABASE_ANON_KEY   — Publishable key
+JWT_SECRET          — секрет JWT
+JWT_ALGORITHM       — HS256
+JWT_EXPIRE_MINUTES  — 10080 (7 дней)
 ```
 
 ## Структура проекта
 ```
 apps/
-  frontend/                   Next.js
+  frontend/
     app/
       (auth)/
-        login/page.tsx        страница входа
-        register/page.tsx     страница регистрации
+        login/page.tsx
+        register/page.tsx
       api/
-        auth/
-          login/route.ts      proxy → FastAPI /api/auth/login
-          register/route.ts   proxy → FastAPI /api/auth/register
-        chat/route.ts         Vercel AI SDK → Gemini (напрямую, без FastAPI)
-      layout.tsx
-      page.tsx                главная — чат (защищена, редирект на /login)
+        auth/login/route.ts         proxy → FastAPI
+        auth/register/route.ts      proxy → FastAPI
+        chat/route.ts               Vercel AI SDK → Gemini (выбор модели из body)
+        chats/route.ts              proxy → GET/POST /api/chats
+        chats/[chatId]/messages/    proxy → GET/POST сообщения чата
+        chats/[chatId]/title/       proxy → PATCH заголовок чата
+        usage/today/route.ts        proxy → GET лимиты
+        usage/increment/route.ts    proxy → POST счётчик
+      page.tsx                      главная — sidebar + чат
     components/
-      chat.tsx                useChat от Vercel AI SDK
+      chat.tsx                      useChat + история + лимиты + выбор модели
     lib/
-      auth.ts                 apiLogin, apiRegister, saveToken, getToken, getUser, logout
-  api/                        FastAPI
+      auth.ts                       apiLogin, apiRegister, saveToken, getToken, getUser, logout
+      chats.ts                      fetchChats, createChat, fetchMessages, saveMessages, fetchUsage, incrementUsage
+  api/
     core/
-      db.py                   asyncpg pool (statement_cache_size=0 — обязательно для Supabase)
-      security.py             bcrypt пароли + JWT токены
-      deps.py                 get_current_user dependency
+      db.py                         asyncpg pool (statement_cache_size=0 — обязательно!)
+      security.py                   bcrypt + JWT
+      deps.py                       get_current_user dependency
     routers/
-      auth.py                 POST /api/auth/register, POST /api/auth/login, GET /api/auth/me
-      chat.py                 POST /api/chat (streaming, пока не используется фронтом)
+      auth.py                       register, login, me
+      chats.py                      CRUD чатов, сообщения, лимиты usage
+      chat.py                       streaming (не используется фронтом напрямую)
     services/
-      llm.py                  stream_chat через openai-compatible Gemini endpoint
-    main.py                   FastAPI app, CORS, lifespan
+      llm.py                        stream_chat через openai-compatible Gemini
+    main.py
 infra/
-  postgres/
-    init.sql                  схема БД — выполнить вручную в Supabase SQL Editor
+  postgres/init.sql                 схема — выполнить в Supabase SQL Editor
 ```
 
 ## Архитектура запросов
 ```
-Браузер
-  │
-  ├── /api/chat          → Next.js route → Vercel AI SDK → Gemini API напрямую
-  │
-  ├── /api/auth/login    → Next.js proxy route → FastAPI :8000 → Supabase
-  ├── /api/auth/register → Next.js proxy route → FastAPI :8000 → Supabase
-  │
-  └── (никогда напрямую к localhost:8000 — CORS)
+Браузер → /api/chat                → Vercel AI SDK → Gemini API (с выбором модели)
+Браузер → /api/auth/*              → Next.js proxy → FastAPI → Supabase
+Браузер → /api/chats/*             → Next.js proxy → FastAPI → Supabase
+Браузер → /api/usage/*             → Next.js proxy → FastAPI → Supabase
+(никогда напрямую к localhost:8000 — CORS)
 ```
 
 ## БД — таблицы (Supabase)
 ```sql
 users      — id, email, hashed_password, is_active, created_at
-messages   — id, user_id, role, content, created_at
-documents  — id, user_id, content, embedding (vector 1536), metadata, created_at
+chats      — id, user_id, title, created_at, updated_at
+messages   — id, chat_id, user_id, role, content, created_at
+usage      — id, user_id, date, request_count (UNIQUE user_id+date)
+documents  — id, user_id, content, embedding vector(1536), metadata, created_at
 ```
 
 ## Аутентификация
-- Регистрация/логин → FastAPI → bcrypt хеш пароля → JWT токен в ответе
-- Токен хранится в `localStorage`
-- Главная страница проверяет токен через `getUser()`, если нет — редирект на `/login`
-- Защищённые API эндпоинты используют `Depends(get_current_user)`
+- bcrypt хеш пароля, JWT токен (7 дней) в localStorage
+- Защищённые роуты через Depends(get_current_user) на бэке
+- Все запросы к FastAPI передают Authorization: Bearer <token>
 
 ## Важные нюансы
-- **Supabase + asyncpg**: обязательно `statement_cache_size=0` в `create_pool()` — без этого `DuplicatePreparedStatementError`
-- **Пароль в SUPABASE_DB_URL**: спецсимволы `@` и `!` нужно URL-encode (`@` → `%40`, `!` → `%21`)
-- **node_modules в Docker**: при добавлении новых npm пакетов нужен `build --no-cache`, иначе volume кеширует старые модули
-- **CORS**: фронт никогда не ходит напрямую к `localhost:8000` — только через Next.js proxy routes
-- **Gemini модели**: `gemini-2.0-flash` имеет нулевую квоту на этом аккаунте, используем `gemini-2.5-flash`
+- Supabase + asyncpg: statement_cache_size=0 обязательно (Transaction pooler)
+- Пароль в URL: @ → %40, ! → %21
+- node_modules: при новых npm пакетах нужен build --no-cache
+- CORS: фронт ходит только через Next.js proxy routes
 
-## Текущий этап: 1 завершён — чат + аутентификация
-## Следующий этап: 2 — история диалогов, sidebar, markdown rendering
+## Статус по плану  (Этап 1)
+
+### Реализовано ✓
+- Чат с AI + streaming ответов
+- Аутентификация (регистрация, логин, JWT)
+- История диалогов — sidebar как в ChatGPT, сохранение в Supabase
+- Выбор модели (Gemini 2.5 Flash / 2.0 Flash / 2.5 Pro)
+- Лимиты использования (50 запросов/день, счётчик в UI)
+- Vercel AI SDK
+- Supabase
+
+### Не реализовано ✗
+- Несколько провайдеров (OpenAI, Claude — сейчас только Gemini)
+
+### Следующий этап: 2 — UI improvements
+- Markdown rendering в сообщениях
+- Улучшение UX sidebar (переименование, удаление чатов)
+- System prompt настройки
+- Лимиты использования (расчёт через токены)
