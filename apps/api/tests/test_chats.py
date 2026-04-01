@@ -15,12 +15,15 @@ def mock_pool():
 
 async def test_list_chats(client, mock_pool):
     mock_pool.fetch.return_value = [
-        {"id": CHAT_ID, "title": "Test Chat", "created_at": "2024-01-01", "updated_at": "2024-01-01"}
+        {"id": CHAT_ID, "title": "Test Chat", "context_tokens": 1024,
+         "created_at": "2024-01-01", "updated_at": "2024-01-01"}
     ]
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
         resp = await client.get("/api/chats", headers=AUTH)
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["context_tokens"] == 1024
 
 
 async def test_list_chats_empty(client, mock_pool):
@@ -167,6 +170,39 @@ async def test_increment_usage_too_many_tokens(client, mock_pool):
         resp = await client.post(
             "/api/chats/usage/increment",
             json={"tokens": 200_001},
+            headers=AUTH,
+        )
+    assert resp.status_code == 422
+
+
+async def test_update_context(client, mock_pool):
+    mock_pool.fetchrow.return_value = {"id": CHAT_ID, "context_tokens": 4096}
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/context",
+            json={"context_tokens": 4096},
+            headers=AUTH,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["context_tokens"] == 4096
+
+
+async def test_update_context_not_found(client, mock_pool):
+    mock_pool.fetchrow.return_value = None
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/context",
+            json={"context_tokens": 100},
+            headers=AUTH,
+        )
+    assert resp.status_code == 404
+
+
+async def test_update_context_negative(client, mock_pool):
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/context",
+            json={"context_tokens": -1},
             headers=AUTH,
         )
     assert resp.status_code == 422

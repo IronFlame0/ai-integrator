@@ -27,11 +27,15 @@ class IncrementUsageRequest(BaseModel):
     tokens: int = Field(..., gt=0, le=200_000)
 
 
+class UpdateContextRequest(BaseModel):
+    context_tokens: int = Field(..., ge=0, le=2_097_152)
+
+
 @router.get("")
 async def list_chats(user: dict = Depends(get_current_user)):
     pool = await get_pool()
     rows = await pool.fetch(
-        "SELECT id, title, created_at, updated_at FROM chats "
+        "SELECT id, title, context_tokens, created_at, updated_at FROM chats "
         "WHERE user_id = $1 ORDER BY updated_at DESC",
         user["id"],
     )
@@ -70,6 +74,23 @@ async def update_title(
         "RETURNING id, title",
         body.title, chat_id, user["id"],
     )
+    return dict(row)
+
+
+@router.patch("/{chat_id}/context")
+async def update_context(
+    chat_id: str,
+    body: UpdateContextRequest,
+    user: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "UPDATE chats SET context_tokens = $1 WHERE id = $2 AND user_id = $3 "
+        "RETURNING id, context_tokens",
+        body.context_tokens, chat_id, user["id"],
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
     return dict(row)
 
 

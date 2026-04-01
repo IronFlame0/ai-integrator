@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fetchChats, createChat, fetchMessages, saveMessage, fetchUsage, incrementUsage } from "@/lib/chats";
+import {
+  fetchChats, createChat, fetchMessages, saveMessage,
+  fetchUsage, incrementUsage, fetchModels, updateContextTokens,
+  deleteChat, renameChat,
+} from "@/lib/chats";
 
 vi.mock("@/lib/auth", () => ({
   getToken: vi.fn().mockReturnValue("mock-token"),
@@ -18,12 +22,27 @@ describe("chats lib", () => {
     vi.resetAllMocks();
   });
 
+  describe("fetchModels", () => {
+    it("returns models on success", async () => {
+      mockFetch(true, [{ id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", context_limit: 1048576 }]);
+      const models = await fetchModels();
+      expect(models).toHaveLength(1);
+      expect(models[0].context_limit).toBe(1048576);
+    });
+
+    it("returns [] on error", async () => {
+      mockFetch(false, {});
+      expect(await fetchModels()).toEqual([]);
+    });
+  });
+
   describe("fetchChats", () => {
-    it("returns list on success", async () => {
-      mockFetch(true, [{ id: "1", title: "Chat", created_at: "", updated_at: "" }]);
+    it("returns list with context_tokens on success", async () => {
+      mockFetch(true, [{ id: "1", title: "Chat", context_tokens: 512, created_at: "", updated_at: "" }]);
       const chats = await fetchChats();
       expect(chats).toHaveLength(1);
       expect(chats[0].id).toBe("1");
+      expect(chats[0].context_tokens).toBe(512);
     });
 
     it("returns [] on error", async () => {
@@ -83,9 +102,13 @@ describe("chats lib", () => {
 
   describe("incrementUsage", () => {
     it("returns usage on success", async () => {
-      mockFetch(true, { used: 6, limit: 50, remaining: 44 });
-      const result = await incrementUsage();
-      expect(result.used).toBe(6);
+      mockFetch(true, { used: 1500, limit: 100000, remaining: 98500 });
+      const result = await incrementUsage(1500);
+      expect(result.used).toBe(1500);
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/usage/increment",
+        expect.objectContaining({ body: JSON.stringify({ tokens: 1500 }) })
+      );
     });
 
     it("throws on 429", async () => {
@@ -94,7 +117,61 @@ describe("chats lib", () => {
         status: 429,
         json: async () => ({ detail: "Limit exceeded" }),
       } as any);
-      await expect(incrementUsage()).rejects.toThrow("Limit exceeded");
+      await expect(incrementUsage(100)).rejects.toThrow("Limit exceeded");
+    });
+  });
+
+  describe("updateContextTokens", () => {
+    it("sends PATCH with context_tokens", async () => {
+      mockFetch(true, { id: "chat-1", context_tokens: 2048 });
+      await updateContextTokens("chat-1", 2048);
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/chats/chat-1/context",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ context_tokens: 2048 }),
+        })
+      );
+    });
+
+    it("throws on error", async () => {
+      mockFetch(false, {}, 500);
+      await expect(updateContextTokens("chat-1", 100)).rejects.toThrow();
+    });
+  });
+
+  describe("deleteChat", () => {
+    it("sends DELETE request", async () => {
+      mockFetch(true, null, 204);
+      await deleteChat("chat-1");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/chats/chat-1",
+        expect.objectContaining({ method: "DELETE" })
+      );
+    });
+
+    it("throws on error", async () => {
+      mockFetch(false, {}, 404);
+      await expect(deleteChat("chat-1")).rejects.toThrow();
+    });
+  });
+
+  describe("renameChat", () => {
+    it("sends PATCH with title", async () => {
+      mockFetch(true, {});
+      await renameChat("chat-1", "New Name");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/chats/chat-1/title",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ title: "New Name" }),
+        })
+      );
+    });
+
+    it("throws on error", async () => {
+      mockFetch(false, {}, 500);
+      await expect(renameChat("chat-1", "x")).rejects.toThrow();
     });
   });
 });

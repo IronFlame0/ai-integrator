@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, logout } from "@/lib/auth";
-import { fetchChats, createChat, deleteChat, renameChat } from "@/lib/chats";
+import { fetchChats, fetchModels, createChat, deleteChat, renameChat, type Model } from "@/lib/chats";
 import Chat from "@/components/chat";
 import SidebarChatItem from "@/components/sidebar-chat-item";
 
@@ -11,6 +11,7 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [models, setModels] = useState<Model[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -18,17 +19,13 @@ export default function Home() {
     const u = getUser();
     if (!u) { router.push("/login"); return; }
     setUser(u);
-    loadChats();
+    Promise.all([fetchChats(), fetchModels()]).then(([chatList, modelList]) => {
+      setChats(chatList);
+      setModels(modelList);
+      if (chatList.length > 0) setActiveChatId(chatList[0].id);
+      setReady(true);
+    });
   }, []);
-
-  async function loadChats() {
-    const list = await fetchChats();
-    setChats(list);
-    if (list.length > 0) {
-      setActiveChatId(list[0].id);
-    }
-    setReady(true);
-  }
 
   async function handleNewChat() {
     const chat = await createChat();
@@ -120,9 +117,16 @@ export default function Home() {
           <Chat
             key={activeChatId}
             chatId={activeChatId}
+            models={models}
+            initialContextTokens={chats.find((c) => c.id === activeChatId)?.context_tokens ?? 0}
             onTitleUpdate={(title) => {
               setChats((prev) =>
                 prev.map((c) => c.id === activeChatId ? { ...c, title } : c)
+              );
+            }}
+            onContextTokensUpdate={(tokens) => {
+              setChats((prev) =>
+                prev.map((c) => c.id === activeChatId ? { ...c, context_tokens: tokens } : c)
               );
             }}
           />

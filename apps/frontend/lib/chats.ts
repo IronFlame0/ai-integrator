@@ -1,8 +1,15 @@
 import { getToken } from "./auth";
 
+export type Model = {
+  id: string;
+  label: string;
+  context_limit: number;
+};
+
 export type Chat = {
   id: string;
   title: string;
+  context_tokens: number;
   created_at: string;
   updated_at: string;
 };
@@ -18,6 +25,12 @@ function authHeaders() {
     Authorization: `Bearer ${getToken()}`,
     "Content-Type": "application/json",
   };
+}
+
+export async function fetchModels(): Promise<Model[]> {
+  const res = await fetch("/api/models");
+  if (!res.ok) return [];
+  return res.json();
 }
 
 export async function fetchChats(): Promise<Chat[]> {
@@ -54,6 +67,15 @@ export async function fetchUsage() {
   const res = await fetch("/api/usage/today", { headers: authHeaders() });
   if (!res.ok) return null;
   return res.json();
+}
+
+export async function updateContextTokens(chatId: string, contextTokens: number): Promise<void> {
+  const res = await fetch(`/api/chats/${chatId}/context`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify({ context_tokens: contextTokens }),
+  });
+  if (!res.ok) throw new Error("Не удалось обновить контекст");
 }
 
 export async function deleteChat(chatId: string): Promise<void> {

@@ -3,24 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import { getToken } from "@/lib/auth";
-import { fetchMessages, saveMessage, incrementUsage, fetchUsage } from "@/lib/chats";
+import { fetchMessages, saveMessage, incrementUsage, fetchUsage, updateContextTokens, type Model } from "@/lib/chats";
 import MarkdownMessage from "@/components/markdown-message";
 
-const MODELS = [
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+const FALLBACK_MODELS: Model[] = [
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", context_limit: 1_048_576 },
 ];
 
 type Props = {
   chatId: string;
+  models: Model[];
+  initialContextTokens: number;
   onTitleUpdate?: (title: string) => void;
+  onContextTokensUpdate?: (tokens: number) => void;
 };
 
-export default function Chat({ chatId, onTitleUpdate }: Props) {
+export default function Chat({ chatId, models, initialContextTokens, onTitleUpdate, onContextTokensUpdate }: Props) {
+  const activeModels = models.length > 0 ? models : FALLBACK_MODELS;
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const [model, setModel] = useState(MODELS[0].value);
+  const [model, setModel] = useState(activeModels[0].id);
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+  const [contextTokens, setContextTokens] = useState(initialContextTokens);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const titleSetRef = useRef(false);
   const pendingUserMessageRef = useRef<string | null>(null);
@@ -60,6 +63,13 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
           });
         }
 
+        if (tokenUsage?.promptTokens != null && tokenUsage?.completionTokens != null) {
+          const newCtx = tokenUsage.promptTokens + tokenUsage.completionTokens;
+          setContextTokens(newCtx);
+          onContextTokensUpdate?.(newCtx);
+          updateContextTokens(chatId, newCtx).catch(() => {});
+        }
+
         if (tokenUsage?.totalTokens) {
           try {
             const u = await incrementUsage(tokenUsage.totalTokens);
@@ -79,6 +89,7 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
     titleSetRef.current = false;
     pendingUserMessageRef.current = null;
     setHistoryLoaded(false);
+    setContextTokens(initialContextTokens);
 
     async function load() {
       const history = await fetchMessages(chatId);
@@ -125,21 +136,46 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
   return (
     <div className="flex flex-1 flex-col min-h-0">
 
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-2">
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 outline-none focus:border-blue-400"
-        >
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
-        {usage && (
-          <span className="text-xs text-gray-400">
-            {(usage.remaining / 1000).toFixed(1)}K / {(usage.limit / 1000).toFixed(0)}K токенов сегодня
-          </span>
-        )}
+      <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-2 space-y-2">
+        <div className="flex items-center justify-between">
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 outline-none focus:border-blue-400"
+          >
+            {activeModels.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+          {usage && (
+            <span className="text-xs text-gray-400">
+              {(usage.remaining / 1000).toFixed(1)}K / {(usage.limit / 1000).toFixed(0)}K токенов сегодня
+            </span>
+          )}
+        </div>
+
+        {contextTokens > 0 && (() => {
+          const limit = activeModels.find((m) => m.id === model)?.context_limit ?? 1_048_576;
+          const pct = Math.min(100, (contextTokens / limit) * 100);
+          const warn = pct >= 80;
+          return (
+            <div className="space-y-0.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Контекст чата</span>
+                <span className={`text-xs ${warn ? "text-orange-500 font-medium" : "text-gray-400"}`}>
+                  {contextTokens.toLocaleString("ru")} / {(limit / 1000).toFixed(0)}K токенов
+                  {warn && " — скоро переполнение"}
+                </span>
+              </div>
+              <div className="h-1 w-full rounded-full bg-gray-100">
+                <div
+                  className={`h-1 rounded-full transition-all ${warn ? "bg-orange-400" : "bg-blue-400"}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-0 p-4">
