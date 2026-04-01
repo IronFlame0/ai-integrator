@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import { getToken } from "@/lib/auth";
 import { fetchMessages, saveMessage, incrementUsage, fetchUsage } from "@/lib/chats";
+import MarkdownMessage from "@/components/markdown-message";
 
 const MODELS = [
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
@@ -144,13 +145,19 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap ${
+              className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
                 m.role === "user"
-                  ? "bg-blue-600 text-white"
+                  ? "bg-blue-600 text-white whitespace-pre-wrap"
                   : "bg-gray-100 text-gray-800"
               }`}
             >
-              {m.content || <span className="animate-pulse text-gray-400">▌</span>}
+              {m.role === "user" ? (
+                m.content || <span className="animate-pulse text-gray-400">▌</span>
+              ) : (
+                m.content
+                  ? <MarkdownMessage content={m.content} />
+                  : <span className="animate-pulse text-gray-400">▌</span>
+              )}
             </div>
           </div>
         ))}
