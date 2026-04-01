@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, logout } from "@/lib/auth";
-import { fetchChats, fetchModels, createChat, deleteChat, renameChat, type Model } from "@/lib/chats";
-import Chat from "@/components/chat";
+import { fetchChats, fetchModels, createChat, deleteChat, renameChat, type Chat, type Model } from "@/lib/chats";
+import ChatComponent from "@/components/chat";
 import SidebarChatItem from "@/components/sidebar-chat-item";
 
 export default function Home() {
@@ -114,17 +114,17 @@ export default function Home() {
 
       <main className="flex flex-1 flex-col">
         {activeChatId ? (
-          <Chat
+          <ChatComponent
             key={activeChatId}
             chatId={activeChatId}
             models={models}
             initialContextTokens={chats.find((c) => c.id === activeChatId)?.context_tokens ?? 0}
-            onTitleUpdate={(title) => {
+            onTitleUpdate={(title: string) => {
               setChats((prev) =>
                 prev.map((c) => c.id === activeChatId ? { ...c, title } : c)
               );
             }}
-            onContextTokensUpdate={(tokens) => {
+            onContextTokensUpdate={(tokens: number) => {
               setChats((prev) =>
                 prev.map((c) => c.id === activeChatId ? { ...c, context_tokens: tokens } : c)
               );
