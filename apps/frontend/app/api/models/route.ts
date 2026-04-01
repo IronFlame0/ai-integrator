@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const API = process.env.API_URL || "http://localhost:8000";
 
 export async function GET(req: NextRequest) {

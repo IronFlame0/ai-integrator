@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from "next/server";
 const API = process.env.API_URL || "http://localhost:8000";
 export async function POST(req: NextRequest) {

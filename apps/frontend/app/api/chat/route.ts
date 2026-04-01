@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
 
