@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, logout } from "@/lib/auth";
-import { fetchChats, createChat } from "@/lib/chats";
+import { fetchChats, createChat, deleteChat, renameChat } from "@/lib/chats";
 import Chat from "@/components/chat";
+import SidebarChatItem from "@/components/sidebar-chat-item";
 
 export default function Home() {
   const router = useRouter();
@@ -35,6 +36,36 @@ export default function Home() {
     setActiveChatId(chat.id);
   }
 
+  async function handleDelete(chatId: string) {
+    const prevChats = chats;
+    const prevActive = activeChatId;
+    const next = chats.filter((c) => c.id !== chatId);
+    setChats(next);
+    if (activeChatId === chatId) {
+      setActiveChatId(next.length > 0 ? next[0].id : null);
+    }
+    try {
+      await deleteChat(chatId);
+    } catch {
+      setChats(prevChats);
+      setActiveChatId(prevActive);
+      alert("Не удалось удалить чат. Попробуй ещё раз.");
+    }
+  }
+
+  async function handleRename(chatId: string, newTitle: string) {
+    const prevChats = chats;
+    setChats((prev) =>
+      prev.map((c) => (c.id === chatId ? { ...c, title: newTitle } : c))
+    );
+    try {
+      await renameChat(chatId, newTitle);
+    } catch {
+      setChats(prevChats);
+      alert("Не удалось переименовать чат. Попробуй ещё раз.");
+    }
+  }
+
   function handleLogout() {
     logout();
     router.push("/login");
@@ -61,17 +92,15 @@ export default function Home() {
             <p className="p-2 text-xs text-gray-400">Нет чатов — создай новый</p>
           )}
           {chats.map((chat) => (
-            <button
+            <SidebarChatItem
               key={chat.id}
+              id={chat.id}
+              title={chat.title}
+              isActive={activeChatId === chat.id}
               onClick={() => setActiveChatId(chat.id)}
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm mb-1 truncate transition-colors ${
-                activeChatId === chat.id
-                  ? "bg-blue-50 text-blue-700 font-medium"
-                  : "text-gray-600 hover:bg-gray-100"
-              }`}
-            >
-              {chat.title}
-            </button>
+              onRename={(newTitle) => handleRename(chat.id, newTitle)}
+              onDelete={() => handleDelete(chat.id)}
+            />
           ))}
         </div>
 

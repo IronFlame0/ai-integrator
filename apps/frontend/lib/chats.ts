@@ -56,6 +56,23 @@ export async function fetchUsage() {
   return res.json();
 }
 
+export async function deleteChat(chatId: string): Promise<void> {
+  const res = await fetch(`/api/chats/${chatId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Не удалось удалить чат");
+}
+
+export async function renameChat(chatId: string, title: string): Promise<void> {
+  const res = await fetch(`/api/chats/${chatId}/title`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error("Не удалось переименовать чат");
+}
+
 export async function incrementUsage() {
   const res = await fetch("/api/usage/increment", {
     method: "POST",
