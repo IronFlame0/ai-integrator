@@ -94,14 +94,14 @@ async def test_save_message_invalid_role(client, mock_pool):
 
 
 async def test_get_usage(client, mock_pool):
-    mock_pool.fetchrow.return_value = {"request_count": 10}
+    mock_pool.fetchrow.return_value = {"token_count": 5000}
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
         resp = await client.get("/api/chats/usage/today", headers=AUTH)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["used"] == 10
-    assert data["limit"] == 50
-    assert data["remaining"] == 40
+    assert data["used"] == 5000
+    assert data["limit"] == 100_000
+    assert data["remaining"] == 95_000
 
 
 async def test_get_usage_no_record(client, mock_pool):
@@ -109,31 +109,67 @@ async def test_get_usage_no_record(client, mock_pool):
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
         resp = await client.get("/api/chats/usage/today", headers=AUTH)
     assert resp.status_code == 200
-    assert resp.json()["used"] == 0
+    data = resp.json()
+    assert data["used"] == 0
+    assert data["remaining"] == 100_000
 
 
 async def test_increment_usage_below_limit(client, mock_pool):
-    mock_pool.fetchrow.side_effect = [
-        {"request_count": 5},
-        {"request_count": 6},
-    ]
+    # Atomic upsert returns updated row when under limit
+    mock_pool.fetchrow.return_value = {"token_count": 2500}
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
-        resp = await client.post("/api/chats/usage/increment", headers=AUTH)
+        resp = await client.post(
+            "/api/chats/usage/increment",
+            json={"tokens": 1500},
+            headers=AUTH,
+        )
     assert resp.status_code == 200
+    data = resp.json()
+    assert data["used"] == 2500
+    assert data["remaining"] == 97_500
 
 
 async def test_increment_usage_at_limit(client, mock_pool):
-    mock_pool.fetchrow.return_value = {"request_count": 50}
+    # Atomic upsert returns None when WHERE usage.token_count < LIMIT is false
+    mock_pool.fetchrow.return_value = None
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
-        resp = await client.post("/api/chats/usage/increment", headers=AUTH)
+        resp = await client.post(
+            "/api/chats/usage/increment",
+            json={"tokens": 100},
+            headers=AUTH,
+        )
     assert resp.status_code == 429
 
 
 async def test_increment_usage_exceeded(client, mock_pool):
-    mock_pool.fetchrow.return_value = {"request_count": 51}
+    mock_pool.fetchrow.return_value = None
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
-        resp = await client.post("/api/chats/usage/increment", headers=AUTH)
+        resp = await client.post(
+            "/api/chats/usage/increment",
+            json={"tokens": 100},
+            headers=AUTH,
+        )
     assert resp.status_code == 429
+
+
+async def test_increment_usage_invalid_tokens(client, mock_pool):
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.post(
+            "/api/chats/usage/increment",
+            json={"tokens": 0},
+            headers=AUTH,
+        )
+    assert resp.status_code == 422
+
+
+async def test_increment_usage_too_many_tokens(client, mock_pool):
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.post(
+            "/api/chats/usage/increment",
+            json={"tokens": 200_001},
+            headers=AUTH,
+        )
+    assert resp.status_code == 422
 
 
 async def test_chats_require_auth(client):

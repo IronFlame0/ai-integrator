@@ -6,7 +6,7 @@ from core.deps import get_current_user
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
-DAILY_LIMIT = 50
+DAILY_TOKEN_LIMIT = 100_000
 
 
 class UpdateTitleRequest(BaseModel):
@@ -21,6 +21,10 @@ class MessageRole(str, Enum):
 class SaveMessageRequest(BaseModel):
     role: MessageRole
     content: str = Field(..., min_length=1, max_length=10000)
+
+
+class IncrementUsageRequest(BaseModel):
+    tokens: int = Field(..., gt=0, le=200_000)
 
 
 @router.get("")
@@ -100,39 +104,38 @@ async def save_message(
 async def get_usage(user: dict = Depends(get_current_user)):
     pool = await get_pool()
     row = await pool.fetchrow(
-        "SELECT request_count FROM usage "
+        "SELECT token_count FROM usage "
         "WHERE user_id = $1 AND date = CURRENT_DATE",
         user["id"],
     )
-    count = row["request_count"] if row else 0
+    used = row["token_count"] if row else 0
     return {
-        "used": count,
-        "limit": DAILY_LIMIT,
-        "remaining": max(0, DAILY_LIMIT - count),
+        "used": used,
+        "limit": DAILY_TOKEN_LIMIT,
+        "remaining": max(0, DAILY_TOKEN_LIMIT - used),
     }
 
 
 @router.post("/usage/increment")
-async def increment_usage(user: dict = Depends(get_current_user)):
+async def increment_usage(
+    body: IncrementUsageRequest,
+    user: dict = Depends(get_current_user),
+):
     pool = await get_pool()
+    # Atomic upsert: only update if under limit (prevents race conditions)
     row = await pool.fetchrow(
-        "SELECT request_count FROM usage "
-        "WHERE user_id = $1 AND date = CURRENT_DATE",
-        user["id"],
+        "INSERT INTO usage (user_id, date, token_count) "
+        "VALUES ($1, CURRENT_DATE, $2) "
+        "ON CONFLICT (user_id, date) DO UPDATE "
+        "SET token_count = usage.token_count + $2 "
+        "WHERE usage.token_count < $3 "
+        "RETURNING token_count",
+        user["id"], body.tokens, DAILY_TOKEN_LIMIT,
     )
-    count = row["request_count"] if row else 0
-    if count >= DAILY_LIMIT:
+    if row is None:
         raise HTTPException(
             status_code=429,
-            detail=f"Daily limit of {DAILY_LIMIT} requests exceeded",
+            detail=f"Daily token limit of {DAILY_TOKEN_LIMIT} exceeded",
         )
-    row = await pool.fetchrow(
-        "INSERT INTO usage (user_id, date, request_count) "
-        "VALUES ($1, CURRENT_DATE, 1) "
-        "ON CONFLICT (user_id, date) DO UPDATE "
-        "SET request_count = usage.request_count + 1 "
-        "RETURNING request_count",
-        user["id"],
-    )
-    count = row["request_count"]
-    return {"used": count, "limit": DAILY_LIMIT, "remaining": DAILY_LIMIT - count}
+    used = row["token_count"]
+    return {"used": used, "limit": DAILY_TOKEN_LIMIT, "remaining": max(0, DAILY_TOKEN_LIMIT - used)}

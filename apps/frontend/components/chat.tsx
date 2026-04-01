@@ -29,7 +29,7 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
     useChat({
       headers: { Authorization: `Bearer ${getToken()}` },
       body: { model, chatId },
-      onFinish: async (assistantMessage) => {
+      onFinish: async (assistantMessage, { usage: tokenUsage }) => {
         if (pendingUserMessageRef.current) {
           await saveMessage(chatId, {
             role: "user",
@@ -60,8 +60,18 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
           });
         }
 
-        const u = await fetchUsage();
-        if (u) setUsage(u);
+        if (tokenUsage?.totalTokens) {
+          try {
+            const u = await incrementUsage(tokenUsage.totalTokens);
+            if (u) setUsage(u);
+          } catch {
+            const u = await fetchUsage();
+            if (u) setUsage(u);
+          }
+        } else {
+          const u = await fetchUsage();
+          if (u) setUsage(u);
+        }
       },
     });
 
@@ -96,13 +106,12 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
-    try {
-      await incrementUsage();
-      pendingUserMessageRef.current = input;
-      handleSubmit(e);
-    } catch (err: any) {
-      alert(err.message);
+    if (usage && usage.remaining <= 0) {
+      alert("Дневной лимит токенов исчерпан. Обновится завтра.");
+      return;
     }
+    pendingUserMessageRef.current = input;
+    handleSubmit(e);
   }
 
   if (!historyLoaded) {
@@ -128,7 +137,7 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
         </select>
         {usage && (
           <span className="text-xs text-gray-400">
-            {usage.remaining} / {usage.limit} запросов сегодня
+            {(usage.remaining / 1000).toFixed(1)}K / {(usage.limit / 1000).toFixed(0)}K токенов сегодня
           </span>
         )}
       </div>
@@ -193,7 +202,7 @@ export default function Chat({ chatId, onTitleUpdate }: Props) {
 
       {usage?.remaining === 0 && (
         <p className="shrink-0 bg-red-50 px-4 py-2 text-center text-xs text-red-600">
-          Дневной лимит исчерпан. Обновится завтра.
+          Дневной лимит токенов исчерпан. Обновится завтра.
         </p>
       )}
     </div>

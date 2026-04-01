@@ -73,10 +73,11 @@ export async function renameChat(chatId: string, title: string): Promise<void> {
   if (!res.ok) throw new Error("Не удалось переименовать чат");
 }
 
-export async function incrementUsage() {
+export async function incrementUsage(tokens: number) {
   const res = await fetch("/api/usage/increment", {
     method: "POST",
     headers: authHeaders(),
+    body: JSON.stringify({ tokens }),
   });
   if (res.status === 429) {
     const data = await res.json();

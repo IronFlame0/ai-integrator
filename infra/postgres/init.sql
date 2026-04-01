@@ -36,8 +36,12 @@ CREATE TABLE IF NOT EXISTS usage (
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   date DATE DEFAULT CURRENT_DATE,
   request_count INTEGER DEFAULT 0,
+  token_count INTEGER DEFAULT 0,
   UNIQUE(user_id, date)
 );
+
+-- Миграция: добавить token_count если таблица уже существует
+ALTER TABLE usage ADD COLUMN IF NOT EXISTS token_count INTEGER DEFAULT 0;
 
 -- Документы для RAG
 CREATE TABLE IF NOT EXISTS documents (

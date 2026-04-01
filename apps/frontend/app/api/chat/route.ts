@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     });
 
     return result.toDataStreamResponse({
+      sendUsage: true,
       getErrorMessage: (error) => {
         console.error(`[chat] ✗ ${Date.now() - start}ms:`, error);
         return error instanceof Error ? error.message : "Ошибка AI";
