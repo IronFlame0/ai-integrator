@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import chat, auth, chats, models
+from routers import chat, auth, chats, models, documents
 from core.db import get_pool, close_pool
 
 
@@ -31,6 +31,7 @@ app.include_router(auth.router)
 app.include_router(chats.router)
 app.include_router(chat.router)
 app.include_router(models.router)
+app.include_router(documents.router)
 
 
 @app.get("/api/health")

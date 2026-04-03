@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS usage (
 -- Миграция: добавить token_count если таблица уже существует
 ALTER TABLE usage ADD COLUMN IF NOT EXISTS token_count INTEGER DEFAULT 0;
 
+-- Миграция: добавить context_tokens в chats
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS context_tokens INTEGER DEFAULT 0;
+
+-- Миграция: добавить filename и file_size в documents
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS filename VARCHAR(255);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_size INTEGER;
+
+-- Миграция: привязать документ к чату
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS document_id UUID REFERENCES documents(id) ON DELETE SET NULL;
+
 -- Документы для RAG
 CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

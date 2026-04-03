@@ -10,6 +10,8 @@ export type Chat = {
   id: string;
   title: string;
   context_tokens: number;
+  document_id: string | null;
+  document_name: string | null;
   created_at: string;
   updated_at: string;
 };

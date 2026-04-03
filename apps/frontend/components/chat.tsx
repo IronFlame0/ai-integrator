@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import { getToken } from "@/lib/auth";
 import { fetchMessages, saveMessage, incrementUsage, fetchUsage, updateContextTokens, type Model } from "@/lib/chats";
+import { uploadDocument, attachDocument, type Document } from "@/lib/documents";
 import MarkdownMessage from "@/components/markdown-message";
+import DocumentBadge, { DocumentPicker } from "@/components/document-badge";
 
 const FALLBACK_MODELS: Model[] = [
   { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", context_limit: 1_048_576 },
@@ -14,24 +16,40 @@ type Props = {
   chatId: string;
   models: Model[];
   initialContextTokens: number;
+  initialDocumentId?: string | null;
+  initialDocumentName?: string | null;
   onTitleUpdate?: (title: string) => void;
   onContextTokensUpdate?: (tokens: number) => void;
+  onDocumentChange?: (docId: string | null, docName: string | null) => void;
 };
 
-export default function Chat({ chatId, models, initialContextTokens, onTitleUpdate, onContextTokensUpdate }: Props) {
+export default function Chat({
+  chatId,
+  models,
+  initialContextTokens,
+  initialDocumentId,
+  initialDocumentName,
+  onTitleUpdate,
+  onContextTokensUpdate,
+  onDocumentChange,
+}: Props) {
   const activeModels = models.length > 0 ? models : FALLBACK_MODELS;
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [model, setModel] = useState(activeModels[0].id);
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
   const [contextTokens, setContextTokens] = useState(initialContextTokens);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [documentId, setDocumentId] = useState<string | null>(initialDocumentId ?? null);
+  const [documentName, setDocumentName] = useState<string | null>(initialDocumentName ?? null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const titleSetRef = useRef(false);
   const pendingUserMessageRef = useRef<string | null>(null);
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, error } =
     useChat({
       headers: { Authorization: `Bearer ${getToken()}` },
-      body: { model, chatId },
+      body: { model, chatId, documentId },
       onFinish: async (assistantMessage, { usage: tokenUsage }) => {
         if (pendingUserMessageRef.current) {
           await saveMessage(chatId, {
@@ -90,6 +108,9 @@ export default function Chat({ chatId, models, initialContextTokens, onTitleUpda
     pendingUserMessageRef.current = null;
     setHistoryLoaded(false);
     setContextTokens(initialContextTokens);
+    setDocumentId(initialDocumentId ?? null);
+    setDocumentName(initialDocumentName ?? null);
+    setUploadError(null);
 
     async function load() {
       const history = await fetchMessages(chatId);
@@ -97,7 +118,7 @@ export default function Chat({ chatId, models, initialContextTokens, onTitleUpda
         setMessages(
           history.map((m, i) => ({
             id: `history-${i}`,
-            role: m.role as any,
+            role: m.role as "user" | "assistant",
             content: m.content,
           }))
         );
@@ -113,6 +134,41 @@ export default function Chat({ chatId, models, initialContextTokens, onTitleUpda
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const doc: Document = await uploadDocument(file);
+      await attachDocument(chatId, doc.id);
+      setDocumentId(doc.id);
+      setDocumentName(doc.filename);
+      onDocumentChange?.(doc.id, doc.filename);
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSelectExisting(doc: Document) {
+    setUploadError(null);
+    try {
+      await attachDocument(chatId, doc.id);
+      setDocumentId(doc.id);
+      setDocumentName(doc.filename);
+      onDocumentChange?.(doc.id, doc.filename);
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : "Не удалось прикрепить документ");
+    }
+  }
+
+  async function handleDetach() {
+    await attachDocument(chatId, null);
+    setDocumentId(null);
+    setDocumentName(null);
+    onDocumentChange?.(null, null);
+  }
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +210,19 @@ export default function Chat({ chatId, models, initialContextTokens, onTitleUpda
           )}
         </div>
 
+        {documentName && (
+          <DocumentBadge
+            filename={documentName}
+            uploading={uploading}
+            onDetach={handleDetach}
+            onUpload={handleUpload}
+          />
+        )}
+
+        {uploadError && (
+          <p className="text-xs text-red-500">{uploadError}</p>
+        )}
+
         {contextTokens > 0 && (() => {
           const limit = activeModels.find((m) => m.id === model)?.context_limit ?? 1_048_576;
           const pct = Math.min(100, (contextTokens / limit) * 100);
@@ -181,7 +250,9 @@ export default function Chat({ chatId, models, initialContextTokens, onTitleUpda
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-0 p-4">
         {messages.length === 0 && (
           <p className="text-center text-sm text-gray-400 mt-20">
-            Начни диалог — напиши что-нибудь
+            {documentName
+              ? `Документ "${documentName}" прикреплён — задай вопрос`
+              : "Начни диалог — напиши что-нибудь"}
           </p>
         )}
         {messages.map((m) => (
@@ -220,9 +291,16 @@ export default function Chat({ chatId, models, initialContextTokens, onTitleUpda
         onSubmit={handleSend}
         className="flex shrink-0 gap-2 border-t border-gray-200 bg-white p-3"
       >
+        {!documentName && (
+          <DocumentPicker
+            uploading={uploading}
+            onUpload={handleUpload}
+            onSelect={handleSelectExisting}
+          />
+        )}
         <input
           className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
-          placeholder="Напиши сообщение..."
+          placeholder={documentName ? `Вопрос по "${documentName}"...` : "Напиши сообщение..."}
           value={input}
           onChange={handleInputChange}
           disabled={isLoading || usage?.remaining === 0}

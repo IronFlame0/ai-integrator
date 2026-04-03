@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from typing import Optional
 from enum import Enum
 from core.db import get_pool
 from core.deps import get_current_user
@@ -31,12 +32,18 @@ class UpdateContextRequest(BaseModel):
     context_tokens: int = Field(..., ge=0, le=2_097_152)
 
 
+class UpdateDocumentRequest(BaseModel):
+    document_id: Optional[str] = None
+
+
 @router.get("")
 async def list_chats(user: dict = Depends(get_current_user)):
     pool = await get_pool()
     rows = await pool.fetch(
-        "SELECT id, title, context_tokens, created_at, updated_at FROM chats "
-        "WHERE user_id = $1 ORDER BY updated_at DESC",
+        "SELECT c.id, c.title, c.context_tokens, c.document_id, "
+        "d.filename AS document_name, c.created_at, c.updated_at "
+        "FROM chats c LEFT JOIN documents d ON d.id = c.document_id "
+        "WHERE c.user_id = $1 ORDER BY c.updated_at DESC",
         user["id"],
     )
     return [dict(r) for r in rows]
@@ -47,7 +54,7 @@ async def create_chat(user: dict = Depends(get_current_user)):
     pool = await get_pool()
     row = await pool.fetchrow(
         "INSERT INTO chats (user_id, title) VALUES ($1, $2) "
-        "RETURNING id, title, created_at, updated_at",
+        "RETURNING id, title, document_id, created_at, updated_at",
         user["id"], "New chat",
     )
     return dict(row)
@@ -88,6 +95,30 @@ async def update_context(
         "UPDATE chats SET context_tokens = $1 WHERE id = $2 AND user_id = $3 "
         "RETURNING id, context_tokens",
         body.context_tokens, chat_id, user["id"],
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return dict(row)
+
+
+@router.patch("/{chat_id}/document")
+async def update_document(
+    chat_id: str,
+    body: UpdateDocumentRequest,
+    user: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    if body.document_id is not None:
+        doc = await pool.fetchrow(
+            "SELECT id FROM documents WHERE id = $1 AND user_id = $2",
+            body.document_id, user["id"],
+        )
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Документ не найден")
+    row = await pool.fetchrow(
+        "UPDATE chats SET document_id = $1 WHERE id = $2 AND user_id = $3 "
+        "RETURNING id, document_id",
+        body.document_id, chat_id, user["id"],
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Chat not found")

@@ -16,6 +16,7 @@ def mock_pool():
 async def test_list_chats(client, mock_pool):
     mock_pool.fetch.return_value = [
         {"id": CHAT_ID, "title": "Test Chat", "context_tokens": 1024,
+         "document_id": None, "document_name": None,
          "created_at": "2024-01-01", "updated_at": "2024-01-01"}
     ]
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
@@ -24,6 +25,7 @@ async def test_list_chats(client, mock_pool):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["context_tokens"] == 1024
+    assert data[0]["document_id"] is None
 
 
 async def test_list_chats_empty(client, mock_pool):
@@ -36,7 +38,8 @@ async def test_list_chats_empty(client, mock_pool):
 
 async def test_create_chat(client, mock_pool):
     mock_pool.fetchrow.return_value = {
-        "id": CHAT_ID, "title": "New chat", "created_at": "2024-01-01", "updated_at": "2024-01-01"
+        "id": CHAT_ID, "title": "New chat", "document_id": None,
+        "created_at": "2024-01-01", "updated_at": "2024-01-01"
     }
     with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
         resp = await client.post("/api/chats", headers=AUTH)
@@ -206,6 +209,58 @@ async def test_update_context_negative(client, mock_pool):
             headers=AUTH,
         )
     assert resp.status_code == 422
+
+
+async def test_update_document(client, mock_pool):
+    doc_id = "doc-uuid-789"
+    # fetchrow called twice: ownership check, then UPDATE
+    mock_pool.fetchrow.side_effect = [
+        {"id": doc_id},  # ownership check passes
+        {"id": CHAT_ID, "document_id": doc_id},  # UPDATE result
+    ]
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/document",
+            json={"document_id": doc_id},
+            headers=AUTH,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["document_id"] == doc_id
+
+
+async def test_attach_foreign_document_forbidden(client, mock_pool):
+    """Нельзя прикрепить чужой документ."""
+    mock_pool.fetchrow.return_value = None  # ownership check fails
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/document",
+            json={"document_id": "foreign-doc-id"},
+            headers=AUTH,
+        )
+    assert resp.status_code == 404
+
+
+async def test_detach_document(client, mock_pool):
+    mock_pool.fetchrow.return_value = {"id": CHAT_ID, "document_id": None}
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/document",
+            json={"document_id": None},
+            headers=AUTH,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["document_id"] is None
+
+
+async def test_update_document_not_found(client, mock_pool):
+    mock_pool.fetchrow.return_value = None
+    with patch("routers.chats.get_pool", AsyncMock(return_value=mock_pool)):
+        resp = await client.patch(
+            f"/api/chats/{CHAT_ID}/document",
+            json={"document_id": None},
+            headers=AUTH,
+        )
+    assert resp.status_code == 404
 
 
 async def test_chats_require_auth(client):

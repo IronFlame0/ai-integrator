@@ -119,6 +119,8 @@ export default function Home() {
             chatId={activeChatId}
             models={models}
             initialContextTokens={chats.find((c) => c.id === activeChatId)?.context_tokens ?? 0}
+            initialDocumentId={chats.find((c) => c.id === activeChatId)?.document_id ?? null}
+            initialDocumentName={chats.find((c) => c.id === activeChatId)?.document_name ?? null}
             onTitleUpdate={(title: string) => {
               setChats((prev) =>
                 prev.map((c) => c.id === activeChatId ? { ...c, title } : c)
@@ -127,6 +129,13 @@ export default function Home() {
             onContextTokensUpdate={(tokens: number) => {
               setChats((prev) =>
                 prev.map((c) => c.id === activeChatId ? { ...c, context_tokens: tokens } : c)
+              );
+            }}
+            onDocumentChange={(docId, docName) => {
+              setChats((prev) =>
+                prev.map((c) => c.id === activeChatId
+                  ? { ...c, document_id: docId, document_name: docName }
+                  : c)
               );
             }}
           />
