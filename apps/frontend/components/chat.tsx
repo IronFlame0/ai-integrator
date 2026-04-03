@@ -215,7 +215,6 @@ export default function Chat({
             filename={documentName}
             uploading={uploading}
             onDetach={handleDetach}
-            onUpload={handleUpload}
           />
         )}
 
