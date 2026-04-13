@@ -4,7 +4,7 @@ A full-stack AI chat application with document analysis, powered by Google Gemin
 
 ## Features
 
-- **Streaming chat** with Google Gemini (2.5 Flash / 2.0 Flash / 2.5 Pro)
+- **Streaming chat** with Google Gemini, OpenAI GPT, and Anthropic Claude
 - **Chat history** — sidebar like ChatGPT, persisted in Supabase
 - **Chat with PDF** — attach a PDF and ask questions about it (full-context approach, no RAG)
 - **Model selection** per conversation
@@ -20,7 +20,7 @@ A full-stack AI chat application with document analysis, powered by Google Gemin
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, Vercel AI SDK v4 |
 | Backend | FastAPI (Python 3.12), asyncpg |
 | Database | Supabase (PostgreSQL + pgvector) |
-| AI | Google Gemini via `@ai-sdk/google` |
+| AI | Google Gemini, OpenAI GPT, Anthropic Claude via Vercel AI SDK |
 
 ## Getting Started
 
@@ -35,13 +35,22 @@ A full-stack AI chat application with document analysis, powered by Google Gemin
 Copy and fill in `.env`:
 
 ```env
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.5-flash
+# Required
+GEMINI_API_KEY=...          # Google AI Studio
 SUPABASE_DB_URL=postgresql://postgres:[password]@[host]:6543/postgres
 JWT_SECRET=your-secret
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=10080
+
+# Optional — add to enable additional providers
+OPENAI_API_KEY=...          # enables GPT-4o, GPT-4o mini, o3-mini
+ANTHROPIC_API_KEY=...       # enables Claude Opus / Sonnet / Haiku
+
+# Optional
+GEMINI_MODEL=gemini-2.5-flash   # default model
 ```
+
+The UI only shows models for providers with a configured API key.
 
 ### 2. Database
 

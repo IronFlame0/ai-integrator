@@ -1,0 +1,10 @@
+services:
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+    environment:
+      - WATCHPACK_POLLING=true

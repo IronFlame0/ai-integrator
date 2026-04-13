@@ -21,6 +21,7 @@ export default function Home() {
     setUser(u);
     Promise.all([fetchChats(), fetchModels()]).then(([chatList, modelList]) => {
       setChats(chatList);
+      console.log(modelList)
       setModels(modelList);
       if (chatList.length > 0) setActiveChatId(chatList[0].id);
       setReady(true);

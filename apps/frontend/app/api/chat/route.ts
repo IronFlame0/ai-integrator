@@ -1,23 +1,38 @@
 export const dynamic = "force-dynamic";
 
-import { streamText } from "ai";
+import { streamText, type LanguageModelV1 } from "ai";
 import { google } from "@ai-sdk/google";
+import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 const API = process.env.API_URL || "http://localhost:8000";
 
-const ALLOWED_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.5-pro",
-];
+const ALLOWED: Record<string, string[]> = {
+  google:    ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"],
+  openai:    ["gpt-4o", "gpt-4o-mini", "o3-mini"],
+  anthropic: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+};
+
+function resolveModel(provider: string, modelId: string): LanguageModelV1 {
+  switch (provider) {
+    case "openai":    return openai(modelId);
+    case "anthropic": return anthropic(modelId);
+    default:          return google(modelId);
+  }
+}
 
 export async function POST(req: Request) {
   const start = Date.now();
-  const { messages, model: requestedModel, documentId } = await req.json();
+  const { messages, model: requestedModel, provider: requestedProvider, documentId } = await req.json();
 
-  const model = ALLOWED_MODELS.includes(requestedModel)
+  const provider = typeof requestedProvider === "string" && requestedProvider in ALLOWED
+    ? requestedProvider
+    : "google";
+
+  const allowedModels = ALLOWED[provider];
+  const modelId = allowedModels.includes(requestedModel)
     ? requestedModel
-    : (process.env.GEMINI_MODEL || "gemini-2.5-flash");
+    : allowedModels[0];
 
   const authHeader = (req as Request & { headers: Headers }).headers.get("authorization") || "";
 
@@ -55,16 +70,23 @@ export async function POST(req: Request) {
     }
   }
 
-  console.log(`[chat] → model: ${model}, messages: ${messages.length}, doc: ${documentId ?? "none"}`);
+  console.log(`[chat] → ${provider}/${modelId}, messages: ${messages.length}, doc: ${safeDocumentId ?? "none"}`);
 
   try {
+    let ttft: number | null = null;
     const result = streamText({
-      model: google(model),
+      model: resolveModel(provider, modelId),
       messages,
       system: systemPrompt,
+      onChunk: () => {
+        if (ttft === null) {
+          ttft = Date.now() - start;
+          console.log(`[chat] first token: ${ttft}ms`);
+        }
+      },
       onFinish: ({ usage, finishReason }) => {
         const ms = Date.now() - start;
-        console.log(`[chat] ✓ ${ms}ms | ${finishReason} | ${usage.promptTokens}→${usage.completionTokens} tokens`);
+        console.log(`[chat] ✓ total: ${ms}ms | TTFT: ${ttft}ms | ${finishReason} | ${usage.promptTokens}→${usage.completionTokens} tokens`);
       },
     });
 

@@ -6,11 +6,15 @@ services:
     volumes:
       - ./apps/frontend:/app
       - /app/node_modules
+      - /app/.next
+    # ^ .next exclusion needed for production build (override.yml replaces this)
     environment:
       - API_URL=http://api:8000
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - GOOGLE_GENERATIVE_AI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       - api
 
@@ -24,6 +28,8 @@ services:
       - DATABASE_URL=${SUPABASE_DB_URL}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
       - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES}

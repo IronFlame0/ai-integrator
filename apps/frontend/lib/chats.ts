@@ -3,6 +3,7 @@ import { getToken } from "./auth";
 export type Model = {
   id: string;
   label: string;
+  provider: string;
   context_limit: number;
 };
 

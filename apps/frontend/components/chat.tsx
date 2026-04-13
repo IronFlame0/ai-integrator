@@ -9,7 +9,7 @@ import MarkdownMessage from "@/components/markdown-message";
 import DocumentBadge, { DocumentPicker } from "@/components/document-badge";
 
 const FALLBACK_MODELS: Model[] = [
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", context_limit: 1_048_576 },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google", context_limit: 1_048_576 },
 ];
 
 type Props = {
@@ -43,14 +43,33 @@ export default function Chat({
   const [documentName, setDocumentName] = useState<string | null>(initialDocumentName ?? null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [msgTimings, setMsgTimings] = useState<Map<string, { ttfb: number; total: number; tokens: number; promptTokens: number }>>(new Map());
+  const [expandedTimings, setExpandedTimings] = useState<Set<string>>(new Set());
   const titleSetRef = useRef(false);
   const pendingUserMessageRef = useRef<string | null>(null);
+  const submitTimeRef = useRef<number>(0);
+  const ttfbRef = useRef<number>(0);
+
+  const provider = activeModels.find((m) => m.id === model)?.provider ?? "google";
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, error } =
     useChat({
       headers: { Authorization: `Bearer ${getToken()}` },
-      body: { model, chatId, documentId },
+      body: { model, provider, chatId, documentId },
+      onResponse: () => {
+        ttfbRef.current = Date.now();
+        const ttfb = ttfbRef.current - submitTimeRef.current;
+        console.log(`[chat:client] ← first byte: ${ttfb}ms (network + AI TTFT)`);
+      },
       onFinish: async (assistantMessage, { usage: tokenUsage }) => {
+        const total = Date.now() - submitTimeRef.current;
+        const ttfb = ttfbRef.current - submitTimeRef.current;
+        const tokens = tokenUsage?.completionTokens ?? 0;
+        const promptTokens = tokenUsage?.promptTokens ?? 0;
+        const genMs = total - ttfb;
+        const tps = tokens > 0 && genMs > 100 ? Math.round(tokens / (genMs / 1000)) : null;
+        console.log(`[chat:client] ✓ total: ${total}ms | TTFB: ${ttfb}ms | gen: ${genMs}ms | ${promptTokens}→${tokens} tokens${tps ? ` | ${tps} t/s` : ""}`);
+        setMsgTimings((prev) => new Map(prev).set(assistantMessage.id, { ttfb, total, tokens, promptTokens }));
         if (pendingUserMessageRef.current) {
           await saveMessage(chatId, {
             role: "user",
@@ -81,8 +100,8 @@ export default function Chat({
           });
         }
 
-        if (tokenUsage?.promptTokens != null && tokenUsage?.completionTokens != null) {
-          const newCtx = tokenUsage.promptTokens + tokenUsage.completionTokens;
+        if (tokenUsage?.promptTokens != null) {
+          const newCtx = tokenUsage.promptTokens;
           setContextTokens(newCtx);
           onContextTokensUpdate?.(newCtx);
           updateContextTokens(chatId, newCtx).catch(() => {});
@@ -178,6 +197,9 @@ export default function Chat({
       return;
     }
     pendingUserMessageRef.current = input;
+    submitTimeRef.current = Date.now();
+    ttfbRef.current = 0;
+    console.log(`[chat:client] → submit`);
     handleSubmit(e);
   }
 
@@ -257,8 +279,34 @@ export default function Chat({
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
           >
+            {m.role === "assistant" && msgTimings.has(m.id) && (() => {
+              const t = msgTimings.get(m.id)!;
+              const genMs = t.total - t.ttfb;
+              const tps = t.tokens > 0 && genMs > 100 ? Math.round(t.tokens / (genMs / 1000)) : null;
+              const expanded = expandedTimings.has(m.id);
+              return (
+                <button
+                  onClick={() => setExpandedTimings((prev) => {
+                    const next = new Set(prev);
+                    expanded ? next.delete(m.id) : next.add(m.id);
+                    return next;
+                  })}
+                  className="mb-0.5 px-1 text-[11px] text-gray-300 hover:text-gray-400 transition-colors"
+                >
+                  {expanded ? (
+                    <span className="flex gap-2">
+                      <span>⏱ TTFB {t.ttfb}ms</span>
+                      <span>· total {(t.total / 1000).toFixed(1)}s</span>
+                      {tps && <span>· {tps} t/s</span>}
+                      <span>· вход {t.promptTokens.toLocaleString("ru")} tok</span>
+                      <span>· выход {t.tokens} tok</span>
+                    </span>
+                  ) : "⏱"}
+                </button>
+              );
+            })()}
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
                 m.role === "user"
@@ -276,6 +324,17 @@ export default function Chat({
             </div>
           </div>
         ))}
+        {isLoading && messages[messages.length - 1]?.role === "user" && (
+          <div className="flex items-start">
+            <div className="rounded-2xl bg-gray-100 px-4 py-3">
+              <span className="flex gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+              </span>
+            </div>
+          </div>
+        )}
         {error && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-red-50 text-red-600 border border-red-200">
