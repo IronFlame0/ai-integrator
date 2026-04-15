@@ -1,4 +1,4 @@
-import { getToken } from "./auth";
+import { getToken, fetchWithAuth } from "./auth";
 
 export type Model = {
   id: string;
@@ -37,13 +37,13 @@ export async function fetchModels(): Promise<Model[]> {
 }
 
 export async function fetchChats(): Promise<Chat[]> {
-  const res = await fetch("/api/chats", { headers: authHeaders() });
+  const res = await fetchWithAuth("/api/chats", { headers: authHeaders() });
   if (!res.ok) return [];
   return res.json();
 }
 
 export async function createChat(): Promise<Chat> {
-  const res = await fetch("/api/chats", {
+  const res = await fetchWithAuth("/api/chats", {
     method: "POST",
     headers: authHeaders(),
   });
@@ -51,7 +51,7 @@ export async function createChat(): Promise<Chat> {
 }
 
 export async function fetchMessages(chatId: string): Promise<Message[]> {
-  const res = await fetch(`/api/chats/${chatId}/messages`, {
+  const res = await fetchWithAuth(`/api/chats/${chatId}/messages`, {
     headers: authHeaders(),
   });
   if (!res.ok) return [];
@@ -59,7 +59,7 @@ export async function fetchMessages(chatId: string): Promise<Message[]> {
 }
 
 export async function saveMessage(chatId: string, message: { role: string; content: string }) {
-  await fetch(`/api/chats/${chatId}/messages`, {
+  await fetchWithAuth(`/api/chats/${chatId}/messages`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(message),
@@ -67,13 +67,13 @@ export async function saveMessage(chatId: string, message: { role: string; conte
 }
 
 export async function fetchUsage() {
-  const res = await fetch("/api/usage/today", { headers: authHeaders() });
+  const res = await fetchWithAuth("/api/usage/today", { headers: authHeaders() });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function updateContextTokens(chatId: string, contextTokens: number): Promise<void> {
-  const res = await fetch(`/api/chats/${chatId}/context`, {
+  const res = await fetchWithAuth(`/api/chats/${chatId}/context`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify({ context_tokens: contextTokens }),
@@ -82,7 +82,7 @@ export async function updateContextTokens(chatId: string, contextTokens: number)
 }
 
 export async function deleteChat(chatId: string): Promise<void> {
-  const res = await fetch(`/api/chats/${chatId}`, {
+  const res = await fetchWithAuth(`/api/chats/${chatId}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
@@ -90,7 +90,7 @@ export async function deleteChat(chatId: string): Promise<void> {
 }
 
 export async function renameChat(chatId: string, title: string): Promise<void> {
-  const res = await fetch(`/api/chats/${chatId}/title`, {
+  const res = await fetchWithAuth(`/api/chats/${chatId}/title`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify({ title }),
@@ -99,7 +99,7 @@ export async function renameChat(chatId: string, title: string): Promise<void> {
 }
 
 export async function incrementUsage(tokens: number) {
-  const res = await fetch("/api/usage/increment", {
+  const res = await fetchWithAuth("/api/usage/increment", {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ tokens }),

@@ -38,3 +38,13 @@ export function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
 }
+
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    logout();
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+  return res;
+}
