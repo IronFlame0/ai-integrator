@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { getUser, logout } from "@/lib/auth";
 import { fetchChats, fetchModels, createChat, deleteChat, renameChat, type Chat, type Model } from "@/lib/chats";
 import ChatComponent from "@/components/chat";
@@ -77,12 +78,20 @@ export default function Home() {
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
           <span className="text-sm font-semibold text-gray-700">AI Chat</span>
-          <button
-            onClick={handleNewChat}
-            className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            + Новый
-          </button>
+          <div className="flex items-center gap-1">
+            <Link
+              href="/quiz"
+              className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Quiz
+            </Link>
+            <button
+              onClick={handleNewChat}
+              className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              + Новый
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">

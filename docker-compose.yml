@@ -26,8 +26,8 @@ services:
       - ./apps/api:/app
     environment:
       - DATABASE_URL=${SUPABASE_DB_URL}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL}
+#      - GEMINI_API_KEY=${GEMINI_API_KEY}
+#      - GEMINI_MODEL=${GEMINI_MODEL}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - JWT_SECRET=${JWT_SECRET}
