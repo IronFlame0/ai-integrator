@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useChat } from "ai/react";
 import { getToken, getUser } from "@/lib/auth";
 import { fetchModels, type Model } from "@/lib/chats";
-import { JS_QUESTIONS } from "@/lib/quiz-questions";
+import { JS_QUESTIONS, type MultipleChoiceQuestion } from "@/lib/quiz-questions";
 import MarkdownMessage from "@/components/markdown-message";
 
 const FALLBACK_MODELS: Model[] = [
@@ -15,6 +15,7 @@ const FALLBACK_MODELS: Model[] = [
 const MAX_ATTEMPTS = 4;
 
 type QuizStatus = "answering" | "accepted" | "skipped" | "finished";
+type MCResult = "correct" | "wrong" | null;
 
 export default function QuizPage() {
   const router = useRouter();
@@ -23,12 +24,21 @@ export default function QuizPage() {
   const [models, setModels] = useState<Model[]>(FALLBACK_MODELS);
   const [model, setModel] = useState(FALLBACK_MODELS[0].id);
   const [attempts, setAttempts] = useState(0);
-  const [results, setResults] = useState<Array<{ topic: string; question: string; accepted: boolean; attempts: number }>>([]);
+  const [results, setResults] = useState<Array<{
+    topic: string;
+    question: string;
+    accepted: boolean;
+    attempts: number;
+    history: Array<{ role: string; content: string }>;
+  }>>([]);
   const [summary, setSummary] = useState<string>("");
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [mcResult, setMcResult] = useState<MCResult>(null);
+  const [mcSelected, setMcSelected] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const currentQuestion = JS_QUESTIONS[questionIndex];
+  const isMultipleChoice = currentQuestion?.type === "multiple-choice";
   const provider = models.find((m) => m.id === model)?.provider ?? "google";
   const isLastAttempt = attempts === MAX_ATTEMPTS - 1;
   const isExhausted = status === "skipped";
@@ -46,7 +56,13 @@ export default function QuizPage() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
     api: "/api/quiz",
     headers: { Authorization: `Bearer ${getToken()}` },
-    body: { question: currentQuestion?.question, keyPoints: currentQuestion?.keyPoints, model, provider, attemptsLeft: MAX_ATTEMPTS - attempts },
+    body: {
+      question: currentQuestion?.question,
+      keyPoints: currentQuestion?.type === "open" ? currentQuestion.keyPoints : undefined,
+      model,
+      provider,
+      attemptsLeft: MAX_ATTEMPTS - attempts,
+    },
     onFinish: (message) => {
       if (message.content.trimStart().startsWith("[ACCEPTED]")) {
         setStatus("accepted");
@@ -64,12 +80,13 @@ export default function QuizPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  function pushResult(accepted: boolean, finalAttempts: number) {
+  function pushResult(accepted: boolean, finalAttempts: number, history: Array<{ role: string; content: string }>) {
     const newResults = [...results, {
       topic: currentQuestion.topic,
       question: currentQuestion.question,
       accepted,
       attempts: finalAttempts,
+      history,
     }];
     setResults(newResults);
     return newResults;
@@ -94,7 +111,7 @@ export default function QuizPage() {
   }
 
   function handleNextQuestion(accepted: boolean) {
-    const finalResults = pushResult(accepted, accepted ? attempts + 1 : attempts);
+    const finalResults = pushResult(accepted, accepted ? attempts + 1 : attempts, messages.map((m) => ({ role: m.role, content: m.content })));
     const nextIndex = questionIndex + 1;
     if (nextIndex >= JS_QUESTIONS.length) {
       finishQuiz(finalResults);
@@ -103,6 +120,38 @@ export default function QuizPage() {
       setMessages([]);
       setAttempts(0);
       setStatus("answering");
+      setMcResult(null);
+      setMcSelected(null);
+    }
+  }
+
+  function handleMcSelect(index: number) {
+    if (mcResult !== null) return;
+    setMcSelected(index);
+    const q = currentQuestion as MultipleChoiceQuestion;
+    const correct = index === q.correctIndex;
+    setMcResult(correct ? "correct" : "wrong");
+    setStatus(correct ? "accepted" : "skipped");
+  }
+
+  function handleMcNext() {
+    const q = currentQuestion as MultipleChoiceQuestion;
+    const correct = mcResult === "correct";
+    const syntheticHistory = [
+      { role: "user", content: q.options[mcSelected!] },
+      { role: "assistant", content: correct ? "[ACCEPTED] Верно." : `Неверно. ${q.explanation}` },
+    ];
+    const finalResults = pushResult(correct, 1, syntheticHistory);
+    const nextIndex = questionIndex + 1;
+    if (nextIndex >= JS_QUESTIONS.length) {
+      finishQuiz(finalResults);
+    } else {
+      setQuestionIndex(nextIndex);
+      setMessages([]);
+      setAttempts(0);
+      setStatus("answering");
+      setMcResult(null);
+      setMcSelected(null);
     }
   }
 
@@ -189,46 +238,102 @@ export default function QuizPage() {
 
       <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-2">
         <div className="mx-auto max-w-2xl space-y-3 py-2">
-          {messages.length === 0 && (
-            <p className="text-center text-xs text-gray-400 pt-4">Напиши свой ответ ниже</p>
-          )}
-          {messages.map((m) => {
-            const isLastAssistant = m.role === "assistant" && m === messages[messages.length - 1];
-            const accepted = isLastAssistant && status === "accepted";
-            return (
-              <div
-                key={m.id}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
+          {isMultipleChoice ? (
+            /* ── Multiple-choice options ── */
+            <div className="space-y-2 pt-2">
+              {(currentQuestion as MultipleChoiceQuestion).options.map(
+                (option, idx) => {
+                  const q = currentQuestion as MultipleChoiceQuestion;
+                  const isSelected = mcSelected === idx;
+                  const revealed = mcResult !== null;
+                  const isCorrect = idx === q.correctIndex;
+
+                  let style =
+                    "w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors ";
+                  if (!revealed) {
+                    style += "border-gray-200 bg-white text-gray-800 hover:border-blue-400 hover:bg-blue-50 cursor-pointer";
+                  } else if (isCorrect) {
+                    style += "border-green-400 bg-green-50 text-green-800 font-medium";
+                  } else if (isSelected) {
+                    style += "border-red-300 bg-red-50 text-red-700";
+                  } else {
+                    style += "border-gray-100 bg-gray-50 text-gray-400";
+                  }
+
+                  return (
+                    <button
+                      key={idx}
+                      className={style}
+                      onClick={() => handleMcSelect(idx)}
+                      disabled={revealed}
+                    >
+                      <span className="mr-3 font-mono text-xs opacity-60">
+                        {String.fromCharCode(65 + idx)}.
+                      </span>
+                      {option}
+                    </button>
+                  );
+                }
+              )}
+
+              {mcResult !== null && (
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                    m.role === "user"
-                      ? "bg-blue-600 text-white whitespace-pre-wrap"
-                      : accepted
-                      ? "bg-green-50 text-gray-800 border border-green-200"
-                      : "bg-white text-gray-800 border border-gray-200"
+                  className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${
+                    mcResult === "correct"
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : "border-orange-200 bg-orange-50 text-orange-800"
                   }`}
                 >
-                  {m.role === "user" ? (
-                    m.content
-                  ) : (
-                    <MarkdownMessage content={cleanContent(m.content)} />
-                  )}
+                  <span className="font-medium mr-1">{mcResult === "correct" ? "Верно!" : "Неверно."}</span>
+                  {(currentQuestion as MultipleChoiceQuestion).explanation}
                 </div>
-              </div>
-            );
-          })}
-
-          {isLoading && messages[messages.length - 1]?.role === "user" && (
-            <div className="flex justify-start">
-              <div className="rounded-2xl bg-white border border-gray-200 px-4 py-3">
-                <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
-                </span>
-              </div>
+              )}
             </div>
+          ) : (
+            /* ── Open-ended chat messages ── */
+            <>
+              {messages.length === 0 && (
+                <p className="text-center text-xs text-gray-400 pt-4">Напиши свой ответ ниже</p>
+              )}
+              {messages.map((m) => {
+                const isLastAssistant = m.role === "assistant" && m === messages[messages.length - 1];
+                const accepted = isLastAssistant && status === "accepted";
+                return (
+                  <div
+                    key={m.id}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                        m.role === "user"
+                          ? "bg-blue-600 text-white whitespace-pre-wrap"
+                          : accepted
+                          ? "bg-green-50 text-gray-800 border border-green-200"
+                          : "bg-white text-gray-800 border border-gray-200"
+                      }`}
+                    >
+                      {m.role === "user" ? (
+                        m.content
+                      ) : (
+                        <MarkdownMessage content={cleanContent(m.content)} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {isLoading && messages[messages.length - 1]?.role === "user" && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl bg-white border border-gray-200 px-4 py-3">
+                    <span className="flex gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div ref={bottomRef} />
@@ -237,7 +342,25 @@ export default function QuizPage() {
 
       <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3">
         <div className="mx-auto max-w-2xl">
-          {status === "accepted" ? (
+          {/* ── Multiple-choice footer ── */}
+          {isMultipleChoice ? (
+            mcResult !== null ? (
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-medium ${mcResult === "correct" ? "text-green-600" : "text-red-500"}`}>
+                  {mcResult === "correct" ? "✓ Правильно" : "✗ Неверно"}
+                </span>
+                <button
+                  onClick={handleMcNext}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  {questionIndex + 1 >= JS_QUESTIONS.length ? "Завершить" : "Следующий вопрос →"}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center">Выбери один из вариантов выше</p>
+            )
+          ) : status === "accepted" ? (
+            /* ── Open: accepted ── */
             <div className="flex items-center justify-between">
               <span className="text-sm text-green-600 font-medium">✓ Ответ принят</span>
               <button
@@ -248,6 +371,7 @@ export default function QuizPage() {
               </button>
             </div>
           ) : isExhausted ? (
+            /* ── Open: exhausted ── */
             <div className="flex items-center justify-between">
               <span className="text-sm text-red-500 font-medium">✗ Попытки исчерпаны</span>
               <button
@@ -258,10 +382,11 @@ export default function QuizPage() {
               </button>
             </div>
           ) : (
+            /* ── Open: input ── */
             <div className="space-y-2">
               {attempts > 0 && (
-                <p className="text-xs text-gray-400">
-                  Попытка {attempts + 1} из {MAX_ATTEMPTS}
+                <p className={`text-xs font-medium ${isLastAttempt ? "text-red-400" : "text-gray-400"}`}>
+                  {isLastAttempt ? "Последняя попытка!" : `Попытка ${attempts + 1} из ${MAX_ATTEMPTS}`}
                 </p>
               )}
               <form onSubmit={handleSubmit} className="flex gap-2">

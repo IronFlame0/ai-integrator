@@ -24,6 +24,7 @@ type QuizResult = {
   question: string;
   accepted: boolean;
   attempts: number;
+  history: Array<{ role: string; content: string }>;
 };
 
 export async function POST(req: Request) {
@@ -42,19 +43,32 @@ export async function POST(req: Request) {
   const accepted = results.filter((r) => r.accepted).length;
   const total = results.length;
 
-  const resultLines = results.map((r, i) =>
-    `${i + 1}. [${r.topic}] — ${r.accepted ? `принят с ${r.attempts} попытки` : `не принят (${r.attempts} попыток)`}`
-  ).join("\n");
+  const transcriptBlocks = results.map((r, i) => {
+    const lines = r.history.map((m) =>
+      m.role === "user"
+        ? `  Кандидат: ${m.content}`
+        : `  Экзаменатор: ${m.content.replace(/^\[ACCEPTED\]\s*/i, "")}`
+    ).join("\n");
 
-  const prompt = `Ты — строгий технический интервьюер. Кандидат прошёл опрос по JavaScript.
+    const verdict = r.accepted
+      ? `✓ Принят (${r.attempts} ${r.attempts === 1 ? "попытка" : "попытки"})`
+      : `✗ Не принят`;
 
-Результаты:
-${resultLines}
+    return `--- Вопрос ${i + 1}: ${r.topic} ---\n${r.question}\n${lines}\nИтог: ${verdict}`;
+  }).join("\n\n");
 
-Итог: ${accepted} из ${total} вопросов приняты.
+  const prompt = `Ты — технический интервьюер. Оцени прохождение собеседования по JavaScript на основе полного диалога.
 
-Напиши краткую оценку (3–5 предложений). Тон: холодный, профессиональный, без похвал и эмоций. Только факты.
-ВАЖНО: не додумывай и не предполагай знания кандидата сверх того что показали результаты. Если вопрос не принят — кандидат его не знает. Не смягчай оценку.`;
+${transcriptBlocks}
+
+Итого: ${accepted} из ${total} вопросов приняты.
+
+Напиши оценку кандидата (4–6 предложений):
+- Оценивай КАЧЕСТВО ответов по диалогу, а не только факт принятия. Быстрый точный ответ — лучше, чем принятый после подсказок.
+- Если кандидат ответил хорошо с первой-второй попытки без подсказок — отметь это.
+- Если кандидат не мог ответить без наводок — это слабое место, даже если вопрос принят.
+- Отдельно упомяни темы, которые нужно подтянуть.
+- Тон: профессиональный, конкретный. Без лишних похвал.`;
 
   const { text } = await generateText({
     model: resolveModel(provider, modelId),
