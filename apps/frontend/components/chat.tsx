@@ -7,6 +7,7 @@ import { fetchMessages, saveMessage, incrementUsage, fetchUsage, updateContextTo
 import { uploadDocument, attachDocument, type Document } from "@/lib/documents";
 import MarkdownMessage from "@/components/markdown-message";
 import DocumentBadge, { DocumentPicker } from "@/components/document-badge";
+import { VoiceButton } from "@/components/voice-button";
 
 const FALLBACK_MODELS: Model[] = [
   { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google", context_limit: 1_048_576 },
@@ -52,7 +53,7 @@ export default function Chat({
 
   const provider = activeModels.find((m) => m.id === model)?.provider ?? "google";
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, error } =
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, error } =
     useChat({
       headers: { Authorization: `Bearer ${getToken()}` },
       body: { model, provider, chatId, documentId },
@@ -362,6 +363,10 @@ export default function Chat({
           value={input}
           onChange={handleInputChange}
           disabled={isLoading || usage?.remaining === 0}
+        />
+        <VoiceButton
+          disabled={isLoading || usage?.remaining === 0}
+          onTranscript={(text) => setInput(text)}
         />
         <button
           type="submit"
