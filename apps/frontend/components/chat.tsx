@@ -46,6 +46,7 @@ export default function Chat({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [msgTimings, setMsgTimings] = useState<Map<string, { ttfb: number; total: number; tokens: number; promptTokens: number }>>(new Map());
   const [expandedTimings, setExpandedTimings] = useState<Set<string>>(new Set());
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
   const titleSetRef = useRef(false);
   const pendingUserMessageRef = useRef<string | null>(null);
   const submitTimeRef = useRef<number>(0);
@@ -181,6 +182,33 @@ export default function Chat({
     } catch (e: unknown) {
       setUploadError(e instanceof Error ? e.message : "Не удалось прикрепить документ");
     }
+  }
+
+  function stripMarkdown(text: string): string {
+    return text
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`[^`]+`/g, "")
+      .replace(/#{1,6}\s/g, "")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+      .replace(/>\s.+/g, "")
+      .replace(/[-*+]\s/g, "")
+      .trim();
+  }
+
+  function speak(id: string, text: string) {
+    window.speechSynthesis.cancel();
+    if (speakingId === id) {
+      setSpeakingId(null);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(stripMarkdown(text));
+    utterance.lang = "ru-RU";
+    utterance.onend = () => setSpeakingId(null);
+    utterance.onerror = () => setSpeakingId(null);
+    setSpeakingId(id);
+    window.speechSynthesis.speak(utterance);
   }
 
   async function handleDetach() {
@@ -323,6 +351,16 @@ export default function Chat({
                   : <span className="animate-pulse text-gray-400">▌</span>
               )}
             </div>
+            {m.role === "assistant" && m.content && (
+              <button
+                type="button"
+                onClick={() => speak(m.id, m.content)}
+                title={speakingId === m.id ? "Остановить" : "Озвучить"}
+                className="mt-0.5 px-1 text-[11px] text-gray-300 hover:text-gray-400 transition-colors"
+              >
+                {speakingId === m.id ? "⏹" : "🔊"}
+              </button>
+            )}
           </div>
         ))}
         {isLoading && messages[messages.length - 1]?.role === "user" && (
