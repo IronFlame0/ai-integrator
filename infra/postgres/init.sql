@@ -66,6 +66,27 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS documents_embedding_idx
   ON documents USING ivfflat (embedding vector_cosine_ops);
 
+CREATE TABLE IF NOT EXISTS quiz_sets (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id SERIAL PRIMARY KEY,
+  set_id INTEGER NOT NULL REFERENCES quiz_sets(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  topic TEXT NOT NULL,
+  question TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'open',
+  key_points TEXT,
+  options TEXT,
+  correct_index INTEGER,
+  explanation TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Автообновление updated_at у чатов
 CREATE OR REPLACE FUNCTION update_chat_timestamp()
 RETURNS TRIGGER AS $$

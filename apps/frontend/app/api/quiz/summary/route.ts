@@ -57,7 +57,9 @@ export async function POST(req: Request) {
     return `--- Вопрос ${i + 1}: ${r.topic} ---\n${r.question}\n${lines}\nИтог: ${verdict}`;
   }).join("\n\n");
 
-  const prompt = `Ты — технический интервьюер. Оцени прохождение собеседования по JavaScript на основе полного диалога.
+  const topics = [...new Set(results.map((r) => r.topic))].join(", ");
+
+  const prompt = `Ты — технический интервьюер. Оцени прохождение собеседования (темы: ${topics}) на основе полного диалога.
 
 ${transcriptBlocks}
 
