@@ -9,7 +9,8 @@ import MarkdownMessage from "@/components/markdown-message";
 import DocumentBadge, { DocumentPicker } from "@/components/document-badge";
 import { VoiceButton } from "@/components/voice-button";
 
-type SpeechRecognitionInstance = typeof window extends { SpeechRecognition: new (...args: unknown[]) => infer R } ? R : { stop(): void; onresult: ((e: SpeechRecognitionEvent) => void) | null; start(): void };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpeechRecognitionInstance = { stop(): void; start(): void; lang: string; continuous: boolean; interimResults: boolean; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null };
 
 const FALLBACK_MODELS: Model[] = [
   { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google", context_limit: 1_048_576 },
@@ -276,7 +277,7 @@ export default function Chat({
     rec.interimResults = true;
     voiceTextRef.current = "";
 
-    rec.onresult = (event: SpeechRecognitionEvent) => {
+    rec.onresult = (event: any) => {
       let interim = "";
       let final = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
