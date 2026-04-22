@@ -9,6 +9,8 @@ import MarkdownMessage from "@/components/markdown-message";
 import DocumentBadge, { DocumentPicker } from "@/components/document-badge";
 import { VoiceButton } from "@/components/voice-button";
 
+type SpeechRecognitionInstance = typeof window extends { SpeechRecognition: new (...args: unknown[]) => infer R } ? R : { stop(): void; onresult: ((e: SpeechRecognitionEvent) => void) | null; start(): void };
+
 const FALLBACK_MODELS: Model[] = [
   { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google", context_limit: 1_048_576 },
 ];
@@ -50,7 +52,7 @@ export default function Chat({
   const [voiceMode, setVoiceMode] = useState(false);
   const [listenTick, setListenTick] = useState(0);
   const voiceModeRef = useRef(false);
-  const voiceRecRef = useRef<SpeechRecognition | null>(null);
+  const voiceRecRef = useRef<SpeechRecognitionInstance | null>(null);
   const voiceTextRef = useRef("");
   const voiceSpokenPosRef = useRef(0);
   const voiceTTSQueueRef = useRef<string[]>([]);
@@ -261,9 +263,10 @@ export default function Chat({
   }
 
   function startVoiceLoop() {
+    type SR = new () => SpeechRecognitionInstance;
     const SR =
-      (window as typeof window & { SpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition ??
-      (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+      (window as typeof window & { SpeechRecognition?: SR }).SpeechRecognition ??
+      (window as typeof window & { webkitSpeechRecognition?: SR }).webkitSpeechRecognition;
     if (!SR || !voiceModeRef.current) return;
 
     const rec = new SR();
