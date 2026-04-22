@@ -8,14 +8,17 @@ interface VoiceButtonProps {
   lang?: string;
 }
 
+type SRInstance = { stop(): void; start(): void; lang: string; continuous: boolean; interimResults: boolean; onstart: (() => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null; onresult: ((e: any) => void) | null };
+type SRConstructor = new () => SRInstance;
+
 export function VoiceButton({ onTranscript, disabled, lang = "ru-RU" }: VoiceButtonProps) {
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SRInstance | null>(null);
 
   const startListening = useCallback(() => {
     const SR =
-      (window as typeof window & { SpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition ??
-      (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+      (window as typeof window & { SpeechRecognition?: SRConstructor }).SpeechRecognition ??
+      (window as typeof window & { webkitSpeechRecognition?: SRConstructor }).webkitSpeechRecognition;
 
     if (!SR) return;
 
@@ -29,7 +32,7 @@ export function VoiceButton({ onTranscript, disabled, lang = "ru-RU" }: VoiceBut
     recognition.onend = () => setIsListening(false);
     recognition.onerror = () => setIsListening(false);
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: any) => {
       let interim = "";
       let final = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
