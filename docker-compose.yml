@@ -33,8 +33,3 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
       - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES}
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"

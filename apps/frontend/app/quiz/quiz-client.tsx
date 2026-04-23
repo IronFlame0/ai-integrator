@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useChat } from "ai/react";
-import { getToken, getUser } from "@/lib/auth";
-import { fetchModels, type Model } from "@/lib/chats";
-import { JS_QUESTIONS, type OpenQuestion, type MultipleChoiceQuestion } from "@/lib/quiz-questions";
+import {useEffect, useRef, useState} from "react";
+import {useRouter} from "next/navigation";
+import {useChat} from "ai/react";
+import {getToken, getUser} from "@/lib/auth";
+import {fetchModels, type Model} from "@/lib/chats";
+import {JS_QUESTIONS, type OpenQuestion, type MultipleChoiceQuestion} from "@/lib/quiz-questions";
 import MarkdownMessage from "@/components/markdown-message";
 
 const FALLBACK_MODELS: Model[] = [
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google", context_limit: 1_048_576 },
+  {id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google", context_limit: 1_048_576},
 ];
 
 const MAX_ATTEMPTS = 4;
@@ -53,7 +53,7 @@ function sqToQuiz(q: SetQuestion, idx: number): QuizQuestion {
       explanation: q.explanation ?? "",
     };
   }
-  return { type: "open", id: idx, topic: q.topic, question: q.question, keyPoints: q.key_points ?? "" };
+  return {type: "open", id: idx, topic: q.topic, question: q.question, keyPoints: q.key_points ?? ""};
 }
 
 // ── Add-question sub-form ────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ type AddFormProps = {
   onAdded: (q: SetQuestion) => void;
 };
 
-function AddQuestionForm({ setId, onAdded }: AddFormProps) {
+function AddQuestionForm({setId, onAdded}: AddFormProps) {
   const [type, setType] = useState<"open" | "multiple-choice">("open");
   const [topic, setTopic] = useState("");
   const [question, setQuestion] = useState("");
@@ -78,18 +78,22 @@ function AddQuestionForm({ setId, onAdded }: AddFormProps) {
     try {
       const body =
         type === "open"
-          ? { topic, question, type: "open", key_points: keyPoints }
-          : { topic, question, type: "multiple-choice", options, correct_index: correctIndex, explanation };
+          ? {topic, question, type: "open", key_points: keyPoints}
+          : {topic, question, type: "multiple-choice", options, correct_index: correctIndex, explanation};
       const res = await fetch(`/api/quiz-sets/${setId}/questions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        headers: {"Content-Type": "application/json", Authorization: `Bearer ${getToken()}`},
         body: JSON.stringify(body),
       });
       if (res.ok) {
         const newQ = await res.json() as SetQuestion;
         onAdded(newQ);
-        setTopic(""); setQuestion(""); setKeyPoints("");
-        setOptions(["", "", "", ""]); setCorrectIndex(0); setExplanation("");
+        setTopic("");
+        setQuestion("");
+        setKeyPoints("");
+        setOptions(["", "", "", ""]);
+        setCorrectIndex(0);
+        setExplanation("");
       }
     } finally {
       setLoading(false);
@@ -132,10 +136,14 @@ function AddQuestionForm({ setId, onAdded }: AddFormProps) {
           {options.map((opt, idx) => (
             <div key={idx} className="flex items-center gap-2">
               <input type="radio" name={`correct-${setId}`} checked={correctIndex === idx}
-                onChange={() => setCorrectIndex(idx)} className="shrink-0" />
+                     onChange={() => setCorrectIndex(idx)} className="shrink-0"/>
               <span className="text-xs text-gray-400 font-mono w-4">{String.fromCharCode(65 + idx)}.</span>
               <input
-                required value={opt} onChange={(e) => { const n = [...options]; n[idx] = e.target.value; setOptions(n); }}
+                required value={opt} onChange={(e) => {
+                const n = [...options];
+                n[idx] = e.target.value;
+                setOptions(n);
+              }}
                 placeholder={`Вариант ${String.fromCharCode(65 + idx)}`}
                 className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400"
               />
@@ -201,9 +209,15 @@ export default function QuizPage() {
   const isExhausted = status === "skipped";
 
   useEffect(() => {
-    if (!getUser()) { router.push("/login"); return; }
+    if (!getUser()) {
+      router.push("/login");
+      return;
+    }
     fetchModels().then((list) => {
-      if (list.length > 0) { setModels(list); setModel(list[0].id); }
+      if (list.length > 0) {
+        setModels(list);
+        setModel(list[0].id);
+      }
     });
   }, [router]);
 
@@ -211,7 +225,7 @@ export default function QuizPage() {
     if (screen !== "list") return;
     setSetsLoading(true);
     fetch(`/api/quiz-sets?only_mine=${onlyMine}`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: {Authorization: `Bearer ${getToken()}`},
     })
       .then((r) => r.json())
       .then((data) => setSets(data as QuizSet[]))
@@ -220,16 +234,19 @@ export default function QuizPage() {
   }, [screen, onlyMine]);
 
   async function expandSet(id: number) {
-    if (expandedId === id) { setExpandedId(null); return; }
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
     setExpandedId(id);
     if (setQuestions[id]) return;
     setLoadingQuestions(id);
     try {
       const res = await fetch(`/api/quiz-sets/${id}/questions`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
+        headers: {Authorization: `Bearer ${getToken()}`},
       });
       const data = await res.json() as SetQuestion[];
-      setSetQuestions((prev) => ({ ...prev, [id]: data }));
+      setSetQuestions((prev) => ({...prev, [id]: data}));
     } finally {
       setLoadingQuestions(null);
     }
@@ -242,8 +259,8 @@ export default function QuizPage() {
     try {
       const res = await fetch("/api/quiz-sets", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ name: newSetName.trim() }),
+        headers: {"Content-Type": "application/json", Authorization: `Bearer ${getToken()}`},
+        body: JSON.stringify({name: newSetName.trim()}),
       });
       if (res.ok) {
         const newSet = await res.json() as QuizSet;
@@ -251,7 +268,7 @@ export default function QuizPage() {
         setNewSetName("");
         setShowNewSet(false);
         setExpandedId(newSet.id);
-        setSetQuestions((prev) => ({ ...prev, [newSet.id]: [] }));
+        setSetQuestions((prev) => ({...prev, [newSet.id]: []}));
       }
     } finally {
       setCreatingSet(false);
@@ -261,7 +278,7 @@ export default function QuizPage() {
   async function handleDeleteSet(id: number) {
     const res = await fetch(`/api/quiz-sets/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: {Authorization: `Bearer ${getToken()}`},
     });
     if (res.ok || res.status === 204) {
       setSets((prev) => prev.filter((s) => s.id !== id));
@@ -272,11 +289,11 @@ export default function QuizPage() {
   async function handleDeleteQuestion(setId: number, qId: number) {
     const res = await fetch(`/api/quiz-questions/${qId}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: {Authorization: `Bearer ${getToken()}`},
     });
     if (res.ok || res.status === 204) {
-      setSetQuestions((prev) => ({ ...prev, [setId]: prev[setId].filter((q) => q.id !== qId) }));
-      setSets((prev) => prev.map((s) => s.id === setId ? { ...s, question_count: s.question_count - 1 } : s));
+      setSetQuestions((prev) => ({...prev, [setId]: prev[setId].filter((q) => q.id !== qId)}));
+      setSets((prev) => prev.map((s) => s.id === setId ? {...s, question_count: s.question_count - 1} : s));
     }
   }
 
@@ -299,20 +316,20 @@ export default function QuizPage() {
       startQuiz(qs.map((q, i) => sqToQuiz(q, i)));
     } else {
       fetch(`/api/quiz-sets/${setId}/questions`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
+        headers: {Authorization: `Bearer ${getToken()}`},
       })
         .then((r) => r.json())
         .then((data: SetQuestion[]) => {
-          setSetQuestions((prev) => ({ ...prev, [setId]: data }));
+          setSetQuestions((prev) => ({...prev, [setId]: data}));
           startQuiz(data.map((q, i) => sqToQuiz(q, i)));
         });
     }
   }
 
   // ── Chat hook ────────────────────────────────────────────────────────────
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
+  const {messages, input, handleInputChange, handleSubmit, isLoading, setMessages} = useChat({
     api: "/api/quiz",
-    headers: { Authorization: `Bearer ${getToken()}` },
+    headers: {Authorization: `Bearer ${getToken()}`},
     body: {
       question: currentQuestion?.question,
       keyPoints: currentQuestion?.type === "open" ? currentQuestion.keyPoints : undefined,
@@ -333,11 +350,17 @@ export default function QuizPage() {
   });
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({behavior: "smooth"});
   }, [messages]);
 
   function pushResult(accepted: boolean, finalAttempts: number, history: Array<{ role: string; content: string }>) {
-    const r = [...results, { topic: currentQuestion.topic, question: currentQuestion.question, accepted, attempts: finalAttempts, history }];
+    const r = [...results, {
+      topic: currentQuestion.topic,
+      question: currentQuestion.question,
+      accepted,
+      attempts: finalAttempts,
+      history
+    }];
     setResults(r);
     return r;
   }
@@ -348,24 +371,34 @@ export default function QuizPage() {
     try {
       const res = await fetch("/api/quiz/summary", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ results: finalResults, model, provider }),
+        headers: {"Content-Type": "application/json", Authorization: `Bearer ${getToken()}`},
+        body: JSON.stringify({results: finalResults, model, provider}),
       });
       const data = await res.json() as { summary: string };
       setSummary(data.summary);
-    } catch { setSummary("Не удалось получить оценку."); }
-    finally { setSummaryLoading(false); }
+    } catch {
+      setSummary("Не удалось получить оценку.");
+    } finally {
+      setSummaryLoading(false);
+    }
   }
 
   function handleNextQuestion(accepted: boolean) {
     const finalResults = pushResult(
       accepted, accepted ? attempts + 1 : attempts,
-      messages.map((m) => ({ role: m.role, content: m.content })),
+      messages.map((m) => ({role: m.role, content: m.content})),
     );
     const next = questionIndex + 1;
-    if (next >= activeQuestions.length) { finishQuiz(finalResults); return; }
-    setQuestionIndex(next); setMessages([]); setAttempts(0); setStatus("answering");
-    setMcResult(null); setMcSelected(null);
+    if (next >= activeQuestions.length) {
+      finishQuiz(finalResults);
+      return;
+    }
+    setQuestionIndex(next);
+    setMessages([]);
+    setAttempts(0);
+    setStatus("answering");
+    setMcResult(null);
+    setMcSelected(null);
   }
 
   function handleMcSelect(index: number) {
@@ -381,17 +414,26 @@ export default function QuizPage() {
     const q = currentQuestion as MultipleChoiceQuestion;
     const correct = mcResult === "correct";
     const h = [
-      { role: "user", content: q.options[mcSelected!] },
-      { role: "assistant", content: correct ? "[ACCEPTED] Верно." : `Неверно. ${q.explanation}` },
+      {role: "user", content: q.options[mcSelected!]},
+      {role: "assistant", content: correct ? "[ACCEPTED] Верно." : `Неверно. ${q.explanation}`},
     ];
     const finalResults = pushResult(correct, 1, h);
     const next = questionIndex + 1;
-    if (next >= activeQuestions.length) { finishQuiz(finalResults); return; }
-    setQuestionIndex(next); setMessages([]); setAttempts(0); setStatus("answering");
-    setMcResult(null); setMcSelected(null);
+    if (next >= activeQuestions.length) {
+      finishQuiz(finalResults);
+      return;
+    }
+    setQuestionIndex(next);
+    setMessages([]);
+    setAttempts(0);
+    setStatus("answering");
+    setMcResult(null);
+    setMcSelected(null);
   }
 
-  function cleanContent(c: string) { return c.replace(/^\[ACCEPTED\]\s*/i, ""); }
+  function cleanContent(c: string) {
+    return c.replace(/^\[ACCEPTED\]\s*/i, "");
+  }
 
   // ── List screen ──────────────────────────────────────────────────────────
   if (screen === "list") {
@@ -399,11 +441,13 @@ export default function QuizPage() {
       <div className="flex h-screen flex-col bg-gray-50">
         <header className="shrink-0 border-b border-gray-200 bg-white px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.push("/")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">← Назад</button>
+            <button onClick={() => router.push("/")}
+                    className="text-sm text-gray-400 hover:text-gray-600 transition-colors">← Назад
+            </button>
             <span className="text-sm font-medium text-gray-700">Квиз</span>
           </div>
           <select value={model} onChange={(e) => setModel(e.target.value)}
-            className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 outline-none focus:border-blue-400">
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 outline-none focus:border-blue-400">
             {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
         </header>
@@ -414,7 +458,8 @@ export default function QuizPage() {
             {/* Controls */}
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} className="rounded" />
+                <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)}
+                       className="rounded"/>
                 Только мои
               </label>
               <button
@@ -434,7 +479,7 @@ export default function QuizPage() {
                   className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
                 />
                 <button type="submit" disabled={creatingSet}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                   {creatingSet ? "..." : "Создать"}
                 </button>
               </form>
@@ -448,7 +493,8 @@ export default function QuizPage() {
                   <div className="flex items-center justify-between px-4 py-3">
                     <div>
                       <span className="text-sm font-medium text-gray-700 underline underline-offset-2">JavaScript</span>
-                      <span className="ml-2 text-xs text-gray-400 underline underline-offset-2">{JS_QUESTIONS.length} вопросов</span>
+                      <span
+                        className="ml-2 text-xs text-gray-400 underline underline-offset-2">{JS_QUESTIONS.length} вопросов</span>
                     </div>
                     <button
                       onClick={() => startQuiz(JS_QUESTIONS)}
@@ -469,9 +515,9 @@ export default function QuizPage() {
 
               {setsLoading ? (
                 <div className="flex gap-1 py-6 justify-center">
-                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]"/>
+                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]"/>
+                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]"/>
                 </div>
               ) : sets.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6">
@@ -518,9 +564,12 @@ export default function QuizPage() {
                           <div className="border-t border-gray-100 px-4 pb-4">
                             {loadingQuestions === s.id ? (
                               <div className="flex gap-1 py-3 justify-center">
-                                <span className="h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce [animation-delay:0ms]" />
-                                <span className="h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce [animation-delay:150ms]" />
-                                <span className="h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce [animation-delay:300ms]" />
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce [animation-delay:0ms]"/>
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce [animation-delay:150ms]"/>
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce [animation-delay:300ms]"/>
                               </div>
                             ) : (
                               <>
@@ -529,7 +578,8 @@ export default function QuizPage() {
                                 ) : (
                                   <ul className="py-2 space-y-1.5">
                                     {qs.map((q) => (
-                                      <li key={q.id} className="flex items-start justify-between gap-2 text-sm text-gray-700">
+                                      <li key={q.id}
+                                          className="flex items-start justify-between gap-2 text-sm text-gray-700">
                                         <span className="flex-1 min-w-0">
                                           <span className="text-xs text-gray-400 mr-1">{q.topic} ·</span>
                                           {q.question}
@@ -550,8 +600,11 @@ export default function QuizPage() {
                                   <AddQuestionForm
                                     setId={s.id}
                                     onAdded={(q) => {
-                                      setSetQuestions((prev) => ({ ...prev, [s.id]: [...(prev[s.id] ?? []), q] }));
-                                      setSets((prev) => prev.map((x) => x.id === s.id ? { ...x, question_count: x.question_count + 1 } : x));
+                                      setSetQuestions((prev) => ({...prev, [s.id]: [...(prev[s.id] ?? []), q]}));
+                                      setSets((prev) => prev.map((x) => x.id === s.id ? {
+                                        ...x,
+                                        question_count: x.question_count + 1
+                                      } : x));
                                     }}
                                   />
                                 )}
@@ -583,20 +636,23 @@ export default function QuizPage() {
             <h1 className="text-lg font-semibold text-gray-800">Опрос завершён</h1>
             <p className="text-xs text-gray-400">{activeQuestions.length} вопросов</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-700 leading-relaxed min-h-[80px]">
+          <div
+            className="rounded-xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-700 leading-relaxed min-h-[80px]">
             {summaryLoading ? (
               <span className="flex gap-1 pt-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]"/>
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]"/>
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]"/>
               </span>
             ) : summary}
           </div>
           <div className="flex gap-3">
-            <button onClick={() => setScreen("list")} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+            <button onClick={() => setScreen("list")}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
               К списку
             </button>
-            <button onClick={() => router.push("/")} className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-900">
+            <button onClick={() => router.push("/")}
+                    className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-900">
               Вернуться в чат
             </button>
           </div>
@@ -610,12 +666,14 @@ export default function QuizPage() {
     <div className="flex h-screen flex-col bg-gray-50">
       <header className="shrink-0 border-b border-gray-200 bg-white px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => setScreen("list")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">← Назад</button>
+          <button onClick={() => setScreen("list")}
+                  className="text-sm text-gray-400 hover:text-gray-600 transition-colors">← Назад
+          </button>
           <span className="text-sm font-medium text-gray-700">Квиз</span>
         </div>
         <div className="flex items-center gap-3">
           <select value={model} onChange={(e) => setModel(e.target.value)}
-            className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 outline-none focus:border-blue-400">
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 outline-none focus:border-blue-400">
             {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <span className="text-xs text-gray-400">{questionIndex + 1} / {activeQuestions.length}</span>
@@ -623,7 +681,7 @@ export default function QuizPage() {
       </header>
 
       <div className="h-1 bg-gray-100">
-        <div className="h-1 bg-blue-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+        <div className="h-1 bg-blue-500 transition-all duration-500" style={{width: `${progressPct}%`}}/>
       </div>
 
       <div className="shrink-0 mx-auto w-full max-w-2xl px-4 pt-5 pb-3">
@@ -657,7 +715,8 @@ export default function QuizPage() {
                 );
               })}
               {mcResult !== null && (
-                <div className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${mcResult === "correct" ? "border-green-200 bg-green-50 text-green-800" : "border-orange-200 bg-orange-50 text-orange-800"}`}>
+                <div
+                  className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${mcResult === "correct" ? "border-green-200 bg-green-50 text-green-800" : "border-orange-200 bg-orange-50 text-orange-800"}`}>
                   <span className="font-medium mr-1">{mcResult === "correct" ? "Верно!" : "Неверно."}</span>
                   {(currentQuestion as MultipleChoiceQuestion).explanation}
                 </div>
@@ -665,14 +724,16 @@ export default function QuizPage() {
             </div>
           ) : (
             <>
-              {messages.length === 0 && <p className="text-center text-xs text-gray-400 pt-4">Напиши свой ответ ниже</p>}
+              {messages.length === 0 &&
+                <p className="text-center text-xs text-gray-400 pt-4">Напиши свой ответ ниже</p>}
               {messages.map((m) => {
                 const isLastAss = m.role === "assistant" && m === messages[messages.length - 1];
                 const accepted = isLastAss && status === "accepted";
                 return (
                   <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${m.role === "user" ? "bg-blue-600 text-white whitespace-pre-wrap" : accepted ? "bg-green-50 text-gray-800 border border-green-200" : "bg-white text-gray-800 border border-gray-200"}`}>
-                      {m.role === "user" ? m.content : <MarkdownMessage content={cleanContent(m.content)} />}
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${m.role === "user" ? "bg-blue-600 text-white whitespace-pre-wrap" : accepted ? "bg-green-50 text-gray-800 border border-green-200" : "bg-white text-gray-800 border border-gray-200"}`}>
+                      {m.role === "user" ? m.content : <MarkdownMessage content={cleanContent(m.content)}/>}
                     </div>
                   </div>
                 );
@@ -681,16 +742,16 @@ export default function QuizPage() {
                 <div className="flex justify-start">
                   <div className="rounded-2xl bg-white border border-gray-200 px-4 py-3">
                     <span className="flex gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]"/>
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]"/>
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]"/>
                     </span>
                   </div>
                 </div>
               )}
             </>
           )}
-          <div ref={bottomRef} />
+          <div ref={bottomRef}/>
         </div>
       </div>
 
@@ -702,7 +763,8 @@ export default function QuizPage() {
                 <span className={`text-sm font-medium ${mcResult === "correct" ? "text-green-600" : "text-red-500"}`}>
                   {mcResult === "correct" ? "✓ Правильно" : "✗ Неверно"}
                 </span>
-                <button onClick={handleMcNext} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                <button onClick={handleMcNext}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                   {questionIndex + 1 >= activeQuestions.length ? "Завершить" : "Следующий вопрос →"}
                 </button>
               </div>
@@ -710,14 +772,16 @@ export default function QuizPage() {
           ) : status === "accepted" ? (
             <div className="flex items-center justify-between">
               <span className="text-sm text-green-600 font-medium">✓ Ответ принят</span>
-              <button onClick={() => handleNextQuestion(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              <button onClick={() => handleNextQuestion(true)}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                 {questionIndex + 1 >= activeQuestions.length ? "Завершить" : "Следующий вопрос →"}
               </button>
             </div>
           ) : isExhausted ? (
             <div className="flex items-center justify-between">
               <span className="text-sm text-red-500 font-medium">✗ Попытки исчерпаны</span>
-              <button onClick={() => handleNextQuestion(false)} className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+              <button onClick={() => handleNextQuestion(false)}
+                      className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
                 {questionIndex + 1 >= activeQuestions.length ? "Завершить" : "Следующий вопрос →"}
               </button>
             </div>
@@ -735,7 +799,7 @@ export default function QuizPage() {
                   disabled={isLoading} autoFocus
                 />
                 <button type="submit" disabled={isLoading || !input.trim()}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-blue-700">
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-blue-700">
                   {isLoading ? "..." : "→"}
                 </button>
               </form>
