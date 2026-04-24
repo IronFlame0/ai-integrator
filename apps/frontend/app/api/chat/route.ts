@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { streamText, type LanguageModelV1 } from "ai";
+import { streamText, tool, type LanguageModelV1 } from "ai";
+import { z } from "zod";
 import { google } from "@ai-sdk/google";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -21,9 +22,34 @@ function resolveModel(provider: string, modelId: string): LanguageModelV1 {
   }
 }
 
+function findBestDocMatch(query: string, docs: Array<{ id: string; filename: string }>) {
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/\.pdf$/i, "").replace(/[_-]/g, " ").split(/\s+/).filter((w) => w.length > 2);
+
+  const queryWords = normalize(query);
+  if (queryWords.length === 0) return null;
+
+  let bestScore = 0;
+  let bestDoc: { id: string; filename: string } | null = null;
+
+  for (const doc of docs) {
+    const nameWords = normalize(doc.filename);
+    let score = 0;
+    for (const qw of queryWords) {
+      if (nameWords.some((nw) => nw.includes(qw) || qw.includes(nw))) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestDoc = doc;
+    }
+  }
+
+  return bestScore > 0 ? bestDoc : null;
+}
+
 export async function POST(req: Request) {
   const start = Date.now();
-  const { messages, model: requestedModel, provider: requestedProvider, documentId } = await req.json();
+  const { messages, model: requestedModel, provider: requestedProvider, documentId, chatId } = await req.json();
 
   const provider = typeof requestedProvider === "string" && requestedProvider in ALLOWED
     ? requestedProvider
@@ -39,7 +65,14 @@ export async function POST(req: Request) {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeDocumentId = typeof documentId === "string" && UUID_RE.test(documentId) ? documentId : null;
 
-  let systemPrompt = "Ты полезный AI ассистент. Отвечай на языке пользователя.";
+  const toolInstructions =
+    "\n\nИНСТРУМЕНТЫ:\n" +
+    "- searchAndAttachDocument: вызывай ТОЛЬКО если пользователь явно просит найти/прикрепить файл И документ ещё не прикреплён к чату. " +
+    "После успешного вызова сообщи пользователю что документ добавлен в контекст чата и ты готов отвечать на вопросы по нему. " +
+    "НЕ упоминай скачивание, ссылки на файл или загрузку — это добавление к контексту, не файловая операция.\n" +
+    "- openQuiz: вызывай когда пользователь просит открыть квиз или тест.";
+
+  let systemPrompt = "Ты полезный AI ассистент. Отвечай на языке пользователя." + toolInstructions;
 
   if (safeDocumentId) {
     try {
@@ -55,7 +88,7 @@ export async function POST(req: Request) {
       const doc = await docRes.json() as { filename: string; content: string };
       systemPrompt =
         `Ты полезный AI ассистент. Отвечай на языке пользователя.\n\n` +
-        `Пользователь прикрепил документ "${doc.filename}" для анализа.\n` +
+        `Документ "${doc.filename}" уже прикреплён к чату — НЕ вызывай searchAndAttachDocument.\n` +
         `ВАЖНО: в документ извлечён только текст — изображения, графики и таблицы-как-картинки не доступны.\n\n` +
         `=== СОДЕРЖИМОЕ ДОКУМЕНТА ===\n${doc.content}\n=== КОНЕЦ ДОКУМЕНТА ===\n\n` +
         `Отвечай на вопросы, опираясь на содержимое документа. ` +
@@ -70,6 +103,50 @@ export async function POST(req: Request) {
     }
   }
 
+  const safeChatId = typeof chatId === "string" ? chatId : null;
+
+  const chatTools = {
+    searchAndAttachDocument: tool({
+      description:
+        "Поиск PDF документа в библиотеке пользователя по названию и прикрепление его к чату. " +
+        "Вызывай когда пользователь просит найти, добавить или прикрепить файл/документ.",
+      parameters: z.object({
+        query: z.string().describe("Ключевые слова из названия файла для поиска"),
+      }),
+      execute: async ({ query }) => {
+        try {
+          const docsRes = await fetch(`${API}/api/documents`, {
+            headers: { Authorization: authHeader },
+          });
+          if (!docsRes.ok) return { found: false, message: "Не удалось получить список документов" };
+
+          const docs = await docsRes.json() as Array<{ id: string; filename: string }>;
+          const found = findBestDocMatch(query, docs);
+
+          if (!found) return { found: false, message: `Документ не найден по запросу "${query}"` };
+
+          if (safeChatId) {
+            await fetch(`${API}/api/chats/${safeChatId}/document`, {
+              method: "PATCH",
+              headers: { Authorization: authHeader, "Content-Type": "application/json" },
+              body: JSON.stringify({ document_id: found.id }),
+            });
+          }
+
+          return { found: true, id: found.id, filename: found.filename };
+        } catch {
+          return { found: false, message: "Ошибка при поиске документа" };
+        }
+      },
+    }),
+
+    openQuiz: tool({
+      description:
+        "Открыть страницу квиза/теста. Вызывай когда пользователь просит открыть квиз, тест или перейти к заданиям.",
+      parameters: z.object({}),
+    }),
+  };
+
   console.log(`[chat] → ${provider}/${modelId}, messages: ${messages.length}, doc: ${safeDocumentId ?? "none"}`);
 
   try {
@@ -78,6 +155,8 @@ export async function POST(req: Request) {
       model: resolveModel(provider, modelId),
       messages,
       system: systemPrompt,
+      tools: chatTools,
+      maxSteps: 3,
       onChunk: () => {
         if (ttft === null) {
           ttft = Date.now() - start;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useChat } from "ai/react";
 import { getToken } from "@/lib/auth";
 import { fetchMessages, saveMessage, incrementUsage, fetchUsage, updateContextTokens, type Model } from "@/lib/chats";
@@ -64,18 +65,34 @@ export default function Chat({
   const submitTimeRef = useRef<number>(0);
   const ttfbRef = useRef<number>(0);
 
+  const router = useRouter();
+  const processedToolsRef = useRef<Set<string>>(new Set());
+
   const provider = activeModels.find((m) => m.id === model)?.provider ?? "google";
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append, error } =
     useChat({
       headers: { Authorization: `Bearer ${getToken()}` },
       body: { model, provider, chatId, documentId },
+      onToolCall: async ({ toolCall }) => {
+        if (toolCall.toolName === "openQuiz") {
+          router.push("/quiz");
+          return "Перенаправляю на страницу квиза...";
+        }
+      },
       onResponse: () => {
         ttfbRef.current = Date.now();
         const ttfb = ttfbRef.current - submitTimeRef.current;
         console.log(`[chat:client] ← first byte: ${ttfb}ms (network + AI TTFT)`);
       },
       onFinish: async (assistantMessage, { usage: tokenUsage }) => {
+        // Don't save quiz-redirect exchanges to history
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolInvocations = (assistantMessage as any).toolInvocations as Array<{ toolName: string }> | undefined;
+        if (toolInvocations?.some((inv) => inv.toolName === "openQuiz")) {
+          pendingUserMessageRef.current = null;
+          return;
+        }
         const total = Date.now() - submitTimeRef.current;
         const ttfb = ttfbRef.current - submitTimeRef.current;
         const tokens = tokenUsage?.completionTokens ?? 0;
@@ -177,6 +194,25 @@ export default function Chat({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const invocations = (msg as any).toolInvocations as Array<{ toolName: string; toolCallId: string; state: string; result?: { found: boolean; id?: string; filename?: string } }> | undefined;
+      if (!invocations) continue;
+      for (const inv of invocations) {
+        if (inv.toolName !== "searchAndAttachDocument" || inv.state !== "result") continue;
+        if (processedToolsRef.current.has(inv.toolCallId)) continue;
+        processedToolsRef.current.add(inv.toolCallId);
+        if (inv.result?.found && inv.result.id && inv.result.filename) {
+          setDocumentId(inv.result.id);
+          setDocumentName(inv.result.filename);
+          onDocumentChange?.(inv.result.id, inv.result.filename);
+        }
+      }
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -487,7 +523,13 @@ export default function Chat({
               : "Начни диалог — напиши что-нибудь"}
           </p>
         )}
-        {messages.map((m) => (
+        {messages.filter((m) => {
+          if (m.role !== "assistant") return true;
+          if (m.content) return true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const invocations = (m as any).toolInvocations;
+          return !invocations?.length;
+        }).map((m) => (
           <div
             key={m.id}
             className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
